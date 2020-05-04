@@ -1,0 +1,3 @@
+[submodule "src/combustion"]
+	path = src/combustion
+	url = git@github.com:TidalPaladin/combustion.git
