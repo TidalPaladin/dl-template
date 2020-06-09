@@ -1,8 +1,8 @@
 .PHONY: docker docker-dev clean clean-venv pre-commit quality run style test venv 
 
 PY_VER=py37
-QUALITY_DIRS=src tests
-CLEAN_DIRS=src tests
+QUALITY_DIRS=$(PROJECT) tests
+CLEAN_DIRS=$(PROJECT) tests
 VENV=venv
 PYTHON=$(VENV)/bin/python3
 
@@ -56,7 +56,7 @@ run: docker
 		-v $(CONF_PATH):/app/conf \
 		-v $(OUTPUT_PATH):/app/outputs \
 		$(DOCKER_IMG):latest \
-		-c "python src/$(PROJECT)"
+		-c "python -m $(PROJECT)"
 
 style: 
 	autoflake -r -i --remove-all-unused-imports --remove-unused-variables $(QUALITY_DIRS)
@@ -66,9 +66,9 @@ style:
 
 test: venv
 	$(PYTHON) -m pytest \
-		--cov=./src/$(PROJECT) \
+		--cov=./$(PROJECT) \
 		--cov-report=xml \
-		-n auto --dist=loadfile -s -v \
+		-s -v \
 		./tests/
 
 test-%: venv
@@ -79,10 +79,11 @@ test-pdb-%: venv
 
 venv: $(VENV)/bin/activate
 
-$(VENV)/bin/activate: requirements.txt src/combustion
+$(VENV)/bin/activate: requirements.txt setup.py combustion
 	test -d $(VENV) || virtualenv $(VENV)
 	$(PYTHON) -m pip install -U pip
-	$(PYTHON) -m pip install -e src/combustion[dev]
+	$(PYTHON) -m pip install -e ./combustion[dev]
 	$(PYTHON) -m pip install --pre -U git+https://github.com/facebookresearch/hydra.git
 	$(PYTHON) -m pip install -r requirements.txt
+	$(PYTHON) -m pip install -e .
 	touch $(VENV)/bin/activate

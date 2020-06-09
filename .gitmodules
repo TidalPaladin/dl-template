@@ -1,3 +1,6 @@
 [submodule "src/combustion"]
 	path = src/combustion
 	url = git@github.com:TidalPaladin/combustion.git
+[submodule "combustion"]
+	path = combustion
+	url = https://github.com/TidalPaladin/combustion.git

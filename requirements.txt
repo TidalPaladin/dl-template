@@ -1,0 +1,4 @@
+pydicom
+kornia>=0.3.0
+efficientnet_pytorch
+opencv-python
