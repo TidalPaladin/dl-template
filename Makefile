@@ -1,33 +1,44 @@
-.PHONY: docker docker-dev clean clean-venv pre-commit quality run style test venv 
+.PHONY: docker clean clean-venv check ci-test pre-commit quality run style tag-version test venv upload upload-test
 
-PY_VER=py37
-QUALITY_DIRS=$(PROJECT) tests
-CLEAN_DIRS=$(PROJECT) tests
-VENV=venv
-PYTHON=$(VENV)/bin/python3
+PROJECT=combustion
+PY_VER=python3.8
+PY_VER_SHORT=py$(shell echo $(PY_VER) | sed 's/[^0-9]*//g')
+QUALITY_DIRS=src tests setup.py
+CLEAN_DIRS=src tests
+VENV=$(shell pwd)/venv
+PYTHON=$(VENV)/bin/python
 
 LINE_LEN=120
 DOC_LEN=120
 
+VERSION := $(shell cat version.txt)
+
 CONFIG_FILE := Makefile.config
 ifeq ($(wildcard $(CONFIG_FILE)),)
-$(error $(CONFIG_FILE) not found. See $(CONFIG_FILE).example.)
+config: 
+	$(error $(CONFIG_FILE) not found. See $(CONFIG_FILE).example.)
 endif
 include $(CONFIG_FILE)
+config:
+
+check: 
+	$(MAKE) style
+	$(MAKE) quality
+	$(MAKE) test
+
+ci-test: $(VENV)/bin/activate-test
+	$(PYTHON) -m pytest \
+		-rs \
+		--cov=./src \
+		--cov-report=xml \
+		-s -v \
+		-m "not ci_skip" \
+		./tests/
 
 docker: 
 	docker build \
 		--target release \
-		--build-arg PROJECT=$(PROJECT) \
-		-t $(DOCKER_IMG):latest \
-		--file ./docker/Dockerfile \
-		./
-
-docker-dev:
-	docker build \
-		--target dev \
-		--build-arg PROJECT=$(PROJECT) \
-		-t $(DOCKER_IMG):dev \
+		-t $(PROJECT):latest \
 		--file ./docker/Dockerfile \
 		./
 
@@ -35,55 +46,82 @@ clean:
 	find $(CLEAN_DIRS) -path '*/__pycache__/*' -delete
 	find $(CLEAN_DIRS) -type d -name '__pycache__' -empty -delete
 	find $(CLEAN_DIRS) -name '*@neomake*' -type f -delete
+	find $(CLEAN_DIRS) -name '*.pyc' -type f -delete
 	find $(CLEAN_DIRS) -name '*,cover' -type f -delete
+	rm -rf dist
 
 clean-venv:
 	rm -rf $(VENV)
 
-pre-commit: venv
+package: venv
+	rm -rf dist
+	$(PYTHON) -m pip install --upgrade setuptools wheel
+	export COMBUSTION_BUILD_VERSION=$(VERSION) && $(PYTHON) setup.py sdist bdist_wheel
+
+pre-commit: 
 	pre-commit install
 
-quality: 
-	black --check --line-length $(LINE_LEN) --target-version $(PY_VER) $(QUALITY_DIRS)
-	flake8 --max-doc-length $(DOC_LEN) --max-line-length $(LINE_LEN) $(QUALITY_DIRS) 
+quality: $(VENV)/bin/activate-quality
+	$(MAKE) clean
+	$(PYTHON) -m black --check --line-length $(LINE_LEN) --target-version $(PY_VER_SHORT) $(QUALITY_DIRS)
+	$(PYTHON) -m flake8 --max-doc-length $(DOC_LEN) --max-line-length $(LINE_LEN) $(QUALITY_DIRS) 
+
+DATA_PATH=$(shell pwd)/examples/basic/data
+CONF_PATH=$(shell pwd)/examples/basic/conf
+OUTPUT_PATH=$(shell pwd)/examples/basic/outputs
 
 run: docker
 	mkdir -p ./outputs ./data ./conf
-	docker run --rm -it --name $(DOCKER_IMG) \
+	docker run --rm -it --name $(PROJECT) \
 		--gpus all \
 		--shm-size 8G \
 		-v $(DATA_PATH):/app/data \
 		-v $(CONF_PATH):/app/conf \
 		-v $(OUTPUT_PATH):/app/outputs \
-		$(DOCKER_IMG):latest \
-		-c "python -m $(PROJECT)"
+		$(PROJECT):latest \
+		-c "python examples/basic"
 
-style: 
-	autoflake -r -i --remove-all-unused-imports --remove-unused-variables $(QUALITY_DIRS)
-	isort --recursive $(QUALITY_DIRS)
-	autopep8 -a -r -i --max-line-length=$(LINE_LEN) $(QUALITY_DIRS)
-	black --line-length $(LINE_LEN) --target-version $(PY_VER) $(QUALITY_DIRS)
+style: $(VENV)/bin/activate-quality
+	$(PYTHON) -m autoflake -r -i --remove-all-unused-imports --remove-unused-variables $(QUALITY_DIRS)
+	$(PYTHON) -m isort $(QUALITY_DIRS)
+	$(PYTHON) -m autopep8 -a -r -i --max-line-length=$(LINE_LEN) $(QUALITY_DIRS)
+	$(PYTHON) -m black --line-length $(LINE_LEN) --target-version $(PY_VER_SHORT) $(QUALITY_DIRS)
 
-test: venv
+tag-version: version.txt
+	git tag -a "$(VERSION)"
+
+test: $(VENV)/bin/activate-test
 	$(PYTHON) -m pytest \
-		--cov=./$(PROJECT) \
+		-rs \
+		--cov=./src \
 		--cov-report=xml \
 		-s -v \
 		./tests/
 
-test-%: venv
-	$(PYTHON) -m pytest -k $* -s -v ./tests/ 
+test-%: $(VENV)/bin/activate-test
+	$(PYTHON) -m pytest -rs -k $* -s -v ./tests/ 
 
-test-pdb-%: venv
-	$(PYTHON) -m pytest --pdb -k $* -s -v ./tests/ 
+test-pdb-%: $(VENV)/bin/activate-test
+	$(PYTHON) -m pytest -rs --pdb -k $* -s -v ./tests/ 
+
+upload: package
+	$(PYTHON) -m pip install --upgrade twine
+	$(PYTHON) -m twine upload --repository pypi dist/*
+
+upload-test: package
+	$(PYTHON) -m pip install --upgrade twine
+	$(PYTHON) -m twine upload --repository testpypi dist/*
 
 venv: $(VENV)/bin/activate
 
-$(VENV)/bin/activate: requirements.txt setup.py combustion
-	test -d $(VENV) || virtualenv $(VENV)
-	$(PYTHON) -m pip install -U pip
-	$(PYTHON) -m pip install -e ./combustion[dev]
-	$(PYTHON) -m pip install --pre -U git+https://github.com/facebookresearch/hydra.git
-	$(PYTHON) -m pip install -r requirements.txt
+$(VENV)/bin/activate: setup.py requirements.txt
+	test -d $(VENV) || $(PY_VER) -m venv $(VENV)
+	$(PYTHON) -m pip install -U pip 
 	$(PYTHON) -m pip install -e .
 	touch $(VENV)/bin/activate
+
+$(VENV)/bin/activate-%: requirements.%.txt
+	test -d $(VENV) || $(PY_VER) -m venv $(VENV)
+	$(PYTHON) -m pip install -U pip 
+	$(PYTHON) -m pip install -r $<
+	touch $(VENV)/bin/activate-$*

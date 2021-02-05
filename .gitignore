@@ -133,6 +133,9 @@ dmypy.json
 
 # training outputs
 outputs/
+multirun/
 
 coverage.xml
 .coverage
+
+src/combustion/version.py
