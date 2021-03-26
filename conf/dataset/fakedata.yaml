@@ -1,26 +1,31 @@
-dataset:
-  num_workers: 4
+# @package _group_
+num_workers: 4
+batch_size: 32
 
-  train:
-    cls: torchvision.datasets.FakeData
-    params:
-      size: 10000
-      image_size: [1, 128, 128]
-      transform:
-        cls: torchvision.transforms.ToTensor
+train:
+  _target_: torchvision.datasets.FakeData
+  params:
+    size: 10000
+    image_size: [1, 128, 128]
+    transform:
+      _target_: torchvision.transforms.ToTensor
 
-  validate:
-    cls: torchvision.datasets.FakeData
-    params:
-      size: 100
-      image_size: [1, 128, 128]
-      transform:
-        cls: torchvision.transforms.ToTensor
+validate:
+  _target_: torchvision.datasets.FakeData
+  params:
+    size: 100
+    image_size: [1, 128, 128]
+    transform:
+      _target_: torchvision.transforms.ToTensor
 
-  test:
-    cls: torchvision.datasets.FakeData
-    params:
-      size: 100
-      image_size: [1, 128, 128]
-      transform:
-        cls: torchvision.transforms.ToTensor
+test:
+  _target_: torchvision.datasets.FakeData
+  params:
+    size: 100
+    image_size: [1, 128, 128]
+    transform:
+      _target_: torchvision.transforms.ToTensor
+
+# optionally, as split from training set
+# validate: 100
+# test: 100

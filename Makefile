@@ -1,6 +1,6 @@
 .PHONY: docker clean clean-venv check ci-test pre-commit quality run style tag-version test venv upload upload-test
 
-PROJECT=combustion
+PROJECT=project
 PY_VER=python3.8
 PY_VER_SHORT=py$(shell echo $(PY_VER) | sed 's/[^0-9]*//g')
 QUALITY_DIRS=src tests setup.py
@@ -14,12 +14,9 @@ DOC_LEN=120
 VERSION := $(shell cat version.txt)
 
 CONFIG_FILE := Makefile.config
-ifeq ($(wildcard $(CONFIG_FILE)),)
-config: 
-	$(error $(CONFIG_FILE) not found. See $(CONFIG_FILE).example.)
-endif
+ifneq ($(wildcard $(CONFIG_FILE)),)
 include $(CONFIG_FILE)
-config:
+endif
 
 check: 
 	$(MAKE) style
@@ -35,12 +32,23 @@ ci-test: $(VENV)/bin/activate-test
 		-m "not ci_skip" \
 		./tests/
 
-docker: 
+docker-build: 
 	docker build \
 		--target release \
 		-t $(PROJECT):latest \
 		--file ./docker/Dockerfile \
 		./
+
+docker-run: $(CONFIG_FILE)
+	mkdir -p ./outputs ./data ./conf
+	docker run --rm -it --name $(PROJECT) \
+		--gpus all \
+		--shm-size 8G \
+		-v $(DATA_PATH):/app/data \
+		-v $(CONF_PATH):/app/conf \
+		-v $(OUTPUT_PATH):/app/outputs \
+		$(PROJECT):latest \
+		-c "python examples/basic"
 
 clean: 
 	find $(CLEAN_DIRS) -path '*/__pycache__/*' -delete
@@ -52,6 +60,10 @@ clean:
 
 clean-venv:
 	rm -rf $(VENV)
+
+init:
+	git submodule update --init --recursive
+	$(MAKE) venv
 
 package: venv
 	rm -rf dist
@@ -66,20 +78,8 @@ quality: $(VENV)/bin/activate-quality
 	$(PYTHON) -m black --check --line-length $(LINE_LEN) --target-version $(PY_VER_SHORT) $(QUALITY_DIRS)
 	$(PYTHON) -m flake8 --max-doc-length $(DOC_LEN) --max-line-length $(LINE_LEN) $(QUALITY_DIRS) 
 
-DATA_PATH=$(shell pwd)/examples/basic/data
-CONF_PATH=$(shell pwd)/examples/basic/conf
-OUTPUT_PATH=$(shell pwd)/examples/basic/outputs
-
-run: docker
-	mkdir -p ./outputs ./data ./conf
-	docker run --rm -it --name $(PROJECT) \
-		--gpus all \
-		--shm-size 8G \
-		-v $(DATA_PATH):/app/data \
-		-v $(CONF_PATH):/app/conf \
-		-v $(OUTPUT_PATH):/app/outputs \
-		$(PROJECT):latest \
-		-c "python examples/basic"
+run: $(CONFIG_FILE)
+	$(PYTHON) -m 
 
 style: $(VENV)/bin/activate-quality
 	$(PYTHON) -m autoflake -r -i --remove-all-unused-imports --remove-unused-variables $(QUALITY_DIRS)

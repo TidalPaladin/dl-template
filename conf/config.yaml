@@ -4,3 +4,7 @@ defaults:
   - optimizer: adam
   - trainer: local
   - schedule: one_cycle
+
+hydra:
+  run:
+    dir: ${trainer.params.logger.params.save_dir}/${trainer.params.logger.params.name}/${trainer.params.logger.params.version}/

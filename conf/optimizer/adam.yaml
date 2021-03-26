@@ -1,5 +1,4 @@
-optimizer:
-  name: adam
-  cls: torch.optim.Adam
-  params:
-    lr: 0.002
+# @package _group_
+_target_: torch.optim.Adam
+params:
+  lr: 0.002

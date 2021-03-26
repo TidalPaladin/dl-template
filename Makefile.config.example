@@ -1,9 +1,13 @@
-# docker image name
-DOCKER_IMG := combustion
+# Use this file as a template for Makefile.config
+# Place any variables needed by Makefile in Makefile.config. 
+# This keeps such variables out of version control
 
-# python project name, should match src/PROJECT
-PROJECT := project
-
+# The following paths are only relevant when using docker
+# path to source datasets, mounted at /app/data
 DATA_PATH := $(shell pwd)/data
+
+# path to source datasets, mounted at /app/outputs
 OUTPUT_PATH := $(shell pwd)/outputs
+
+# path to source datasets, mounted at /app/conf
 CONF_PATH := $(shell pwd)/conf
