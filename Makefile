@@ -1,10 +1,10 @@
 .PHONY: docker clean clean-venv check ci-test pre-commit quality run style tag-version test venv upload upload-test
 
 PROJECT=project
-PY_VER=python3.8
+PY_VER=python3.9
 PY_VER_SHORT=py$(shell echo $(PY_VER) | sed 's/[^0-9]*//g')
-QUALITY_DIRS=src tests setup.py
-CLEAN_DIRS=src tests
+QUALITY_DIRS=$(PROJECT) tests setup.py
+CLEAN_DIRS=$(PROJECT) tests
 VENV=$(shell pwd)/venv
 PYTHON=$(VENV)/bin/python
 
@@ -17,6 +17,7 @@ CONFIG_FILE := Makefile.config
 ifneq ($(wildcard $(CONFIG_FILE)),)
 include $(CONFIG_FILE)
 endif
+
 
 check: 
 	$(MAKE) style
@@ -31,6 +32,20 @@ ci-test: $(VENV)/bin/activate-test
 		-s -v \
 		-m "not ci_skip" \
 		./tests/
+
+clean: 
+	find $(CLEAN_DIRS) -path '*/__pycache__/*' -delete
+	find $(CLEAN_DIRS) -type d -name '__pycache__' -empty -delete
+	find $(CLEAN_DIRS) -name '*@neomake*' -type f -delete
+	find $(CLEAN_DIRS) -name '*.pyc' -type f -delete
+	find $(CLEAN_DIRS) -name '*,cover' -type f -delete
+	rm -rf dist
+
+clean-venv:
+	rm -rf $(VENV)
+
+demo: $(CONFIG_FILE)
+	$(PYTHON) -m $(PROJECT) trainer.params.default_root_dir=$(OUTPUT_PATH)
 
 docker-build: 
 	docker build \
@@ -50,17 +65,6 @@ docker-run: $(CONFIG_FILE)
 		$(PROJECT):latest \
 		-c "python examples/basic"
 
-clean: 
-	find $(CLEAN_DIRS) -path '*/__pycache__/*' -delete
-	find $(CLEAN_DIRS) -type d -name '__pycache__' -empty -delete
-	find $(CLEAN_DIRS) -name '*@neomake*' -type f -delete
-	find $(CLEAN_DIRS) -name '*.pyc' -type f -delete
-	find $(CLEAN_DIRS) -name '*,cover' -type f -delete
-	rm -rf dist
-
-clean-venv:
-	rm -rf $(VENV)
-
 init:
 	git submodule update --init --recursive
 	$(MAKE) venv
@@ -79,7 +83,7 @@ quality: $(VENV)/bin/activate-quality
 	$(PYTHON) -m flake8 --max-doc-length $(DOC_LEN) --max-line-length $(LINE_LEN) $(QUALITY_DIRS) 
 
 run: $(CONFIG_FILE)
-	$(PYTHON) -m 
+	$(PYTHON) -m $(PROJECT)
 
 style: $(VENV)/bin/activate-quality
 	$(PYTHON) -m autoflake -r -i --remove-all-unused-imports --remove-unused-variables $(QUALITY_DIRS)
@@ -114,9 +118,10 @@ upload-test: package
 
 venv: $(VENV)/bin/activate
 
-$(VENV)/bin/activate: setup.py requirements.txt
+$(VENV)/bin/activate: setup.py requirements.txt 
 	test -d $(VENV) || $(PY_VER) -m venv $(VENV)
 	$(PYTHON) -m pip install -U pip 
+	$(PYTHON) -m pip install -r requirements.txt
 	$(PYTHON) -m pip install -e .
 	touch $(VENV)/bin/activate
 

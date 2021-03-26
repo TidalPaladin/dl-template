@@ -4,6 +4,9 @@ import os
 import subprocess 
 from setuptools import setup, find_packages
 
+# Name of project here
+PROJECT = "project"
+
 TORCH = "torch>=1.6.0,<=2.0.0"
 
 extras = {}
@@ -26,12 +29,12 @@ def write_version_info():
     except Exception:
         pass
 
-    if os.getenv("COMBUSTION_BUILD_VERSION"):
-        version = os.getenv("COMBUSTION_BUILD_VERSION")
+    if os.getenv(f"{PROJECT}_BUILD_VERSION"):
+        version = os.getenv(f"{PROJECT}_BUILD_VERSION")
     elif sha != "Unknown":
         version += "+" + sha[:7]
 
-    version_path = os.path.join(cwd, "src", "combustion", "version.py")
+    version_path = os.path.join(cwd, PROJECT, "version.py")
     with open(version_path, "w") as f:
         f.write("__version__ = '{}'\n".format(version))
         f.write("git_version = {}\n".format(repr(sha)))
@@ -41,7 +44,7 @@ def write_version_info():
 
 def install(version):
     setup(
-        name="dl-template",
+        name=f"{PROJECT}",
         version=version,
         author="Scott Chase Waggener",
         author_email="tidalpaladin@gmail.com",
@@ -49,8 +52,8 @@ def install(version):
         keywords="deep learning pytorch",
         license="Apache",
         url="https://github.com/TidalPaladin/dl-template",
-        package_dir={"": "src"},
-        packages=find_packages("src"),
+        package_dir="",
+        packages=find_packages(),
         install_requires=install_requires,
         extras_require=extras,
         python_requires=">=3.7.0",

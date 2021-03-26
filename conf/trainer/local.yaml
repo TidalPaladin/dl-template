@@ -8,16 +8,20 @@ _target_: pytorch_lightning.Trainer
 # Use any pytorch_lightning.Trainer param 
 # https://pytorch-lightning.readthedocs.io/en/stable/trainer.html#trainer-flags
 params:
-  max_epochs: 80
-  gpus: 1
+  max_epochs: 1
+
+  # GPU / mixed precision config
+  # Turing or newer GPU required for mixed precision to work
+  #gpus: 1
   amp_level: O1
-  precision: 16 # change this if GPU doesn't support 16 bit float
+  #precision: 16 # change this if GPU doesn't support 16 bit float
+  
   #train_percent_check: 0.1
-  #grad_clip_val: 100
   check_val_every_n_epoch: 2
   
   # Change this to path where outputs will be written
-  default_root_dir: PATH
+  # NOTE: this should be an absolute path or unwanted subdirs will be created
+  default_root_dir: ${oc.env:OUTPUT_PATH}
 
   logger:
     _target_: pytorch_lightning.loggers.TensorBoardLogger

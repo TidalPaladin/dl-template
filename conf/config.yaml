@@ -1,6 +1,6 @@
 defaults:
   - dataset: fakedata
-  - model: resnet
+  - model: fakemodel
   - optimizer: adam
   - trainer: local
   - schedule: one_cycle

@@ -19,21 +19,18 @@ This template is designed with following 3rd party libraries in mind:
 
 ## Installation
 
-First create a virtual environment to store dependencies.
+To pull the Combustion submodule and initialize a virtual environment, run
 
 ```
-make venv
+make init
 ```
-
-This make recipe can also be used to activate the virtual environment after install.
-
-TODO docker build instructions here
 
 ## Usage
 
-A project template is provided in `src/project`. The existing `__main__.py` file
-demonstrates a basic training / testing example using PyTorch-Lightning and Hydra.
-Modify the `project` directory as needed.
+A project template is provided in `project`. Modify the source code in this directory
+as needed. Configuration files in `conf` configure runtime parameters / hyperparameters.
+Run `make demo` to run the existing code. A trivial training run on random input data
+and labels will be executed on CPU.
 
 ### Configuration
 
@@ -51,7 +48,6 @@ Some noteable features of Hydra to be aware of are:
 ## Development
 
 Multiple make recipes are provided to aid in development:
-* `pre-commit` - Installs a pre-commit hook to run code quality tests
 * `quality` - Runs code quality tests
 * `style` - Automatically formats code (using `black` and `autopep8`)
 * `test` - Runs all tests
@@ -60,11 +56,10 @@ Multiple make recipes are provided to aid in development:
 
 ## To Do
 * CircleCI CI/CD pipeline
-* Improve documentation for Combustion modules
-* Add / fix tests as needed
 
 
 ## References
 * [PyTorch Lightning](https://github.com/PytorchLightning/pytorch-lightning)
 * [Hydra](https://github.com/facebookresearch/hydra)
 * [Combustion](https://github.com/TidalPaladin/combustion)
+* [Albumentations](https://albumentations.ai/)
