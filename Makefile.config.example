@@ -8,6 +8,3 @@ DATA_PATH := $(shell pwd)/data
 
 # path to source datasets, mounted at /app/outputs
 OUTPUT_PATH := $(shell pwd)/outputs
-
-# path to source datasets, mounted at /app/conf
-CONF_PATH := $(shell pwd)/conf

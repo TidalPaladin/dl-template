@@ -1,19 +1,33 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import os
-import subprocess 
-from setuptools import setup, find_packages
+import subprocess
+
+from setuptools import find_packages, setup
+
+
+# Name of project here
+PROJECT = "project"
 
 TORCH = "torch>=1.6.0,<=2.0.0"
 
-extras = {}
 
-install_requires = [
+requirements = [
     TORCH,
     "pytorch-lightning>=1.0.0",
-    "hydra-core>=1.0.0",
+    "lightning-bolts",
     "pynvml",
+    "torchmetrics",
+    "wandb",
+    "scikit-learn",
 ]
+
+
+extras = {}
+extras["test"] = ["pytest", "pytest-cov", "pytest-mock"]
+extras["dev"] = extras["test"]
+extras["vision"] = ["torchvision", "albumentations"]
+
 
 def write_version_info():
     # get version
@@ -26,12 +40,12 @@ def write_version_info():
     except Exception:
         pass
 
-    if os.getenv("COMBUSTION_BUILD_VERSION"):
-        version = os.getenv("COMBUSTION_BUILD_VERSION")
+    if os.getenv(f"{PROJECT}_BUILD_VERSION"):
+        version = os.getenv(f"{PROJECT}_BUILD_VERSION")
     elif sha != "Unknown":
         version += "+" + sha[:7]
 
-    version_path = os.path.join(cwd, "src", "combustion", "version.py")
+    version_path = os.path.join(cwd, PROJECT, "version.py")
     with open(version_path, "w") as f:
         f.write("__version__ = '{}'\n".format(version))
         f.write("git_version = {}\n".format(repr(sha)))
@@ -41,7 +55,7 @@ def write_version_info():
 
 def install(version):
     setup(
-        name="dl-template",
+        name=f"{PROJECT}",
         version=version,
         author="Scott Chase Waggener",
         author_email="tidalpaladin@gmail.com",
@@ -49,9 +63,9 @@ def install(version):
         keywords="deep learning pytorch",
         license="Apache",
         url="https://github.com/TidalPaladin/dl-template",
-        package_dir={"": "src"},
-        packages=find_packages("src"),
-        install_requires=install_requires,
+        package_dir="",
+        packages=find_packages(),
+        install_requires=requirements,
         extras_require=extras,
         python_requires=">=3.7.0",
         classifiers=[

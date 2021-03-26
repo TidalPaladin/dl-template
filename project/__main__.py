@@ -1,26 +1,59 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+from functools import partial
+from pathlib import Path
+from typing import List, Union
 
-import logging
-
-import hydra
 import pytorch_lightning as pl
-import torch
-from omegaconf import DictConfig
-import torch.nn as nn
-import torch.nn.functional as F
-from typing import Any
-from torch import Tensor
+from pl_bolts.datamodules import CIFAR10DataModule
+from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning.plugins import DDPPlugin
 
-from combustion.lightning import HydraMixin
-from pytorch_lightning.metrics.classification import Accuracy, F1
-from pytorch_lightning.metrics import MetricCollection
-from .model import FakeModel
+from .model import BaseModel, ConvModel
 
 
-@hydra.main(config_path=config_path, config_name=config_name)
-def main(cfg):
-    combustion.main(cfg)
+def patch_logger(logger: WandbLogger) -> WandbLogger:
+    log = logger.experiment.log
+    logger.experiment.log = partial(log, commit=False)
+    return logger
+
+
+def main():
+    pl.seed_everything(42)
+    model: BaseModel = ConvModel()
+    datamodule: pl.LightningDataModule = CIFAR10DataModule(data_dir="./data", num_workers=24, batch_size=64)
+    ROOT: Path = Path("/mnt/iscsi/outputs/cifar10")
+    logger = WandbLogger(project="cifar10", log_model=True, save_dir=str(ROOT))
+    callbacks = model.get_callbacks()
+
+    logger = patch_logger(logger)
+
+    gpus: Union[int, List[int]] = [0]
+
+    if isinstance(gpus, int) and gpus > 1 or isinstance(gpus, list) and len(gpus) > 1:
+        strategy = DDPPlugin(find_unused_parameters=True)
+    else:
+        strategy = None
+
+    print(f"Artifacts will be saved to {str(ROOT)}")
+
+    steps = 40000
+    trainer = pl.Trainer(
+        logger=logger,
+        precision=16,
+        gpus=gpus,
+        min_steps=steps,
+        max_steps=steps,
+        callbacks=callbacks,
+        accumulate_grad_batches=1,
+        num_sanity_val_steps=0,
+        strategy=strategy,
+        check_val_every_n_epoch=1,
+        gradient_clip_val=10.0,
+        default_root_dir=ROOT,
+    )
+
+    trainer.fit(model, datamodule=datamodule)
 
 
 if __name__ == "__main__":

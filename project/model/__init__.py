@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-from .trivial_model import FakeModel
+from .base import BaseModel
+from .conv import ConvModel
 
-__all__ = ["FakeModel"]
+
+__all__ = ["BaseModel", "ConvModel"]
