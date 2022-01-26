@@ -9,14 +9,23 @@ PROJECT = "project"
 
 TORCH = "torch>=1.6.0,<=2.0.0"
 
-extras = {}
 
-install_requires = [
+requirements = [
     TORCH,
     "pytorch-lightning>=1.0.0",
-    "hydra-core>=1.0.0",
+    "lightning-bolts",
     "pynvml",
+    "torchmetrics",
+    "wandb",
+    "scikit-learn",
 ]
+
+
+extras = {}
+extras["test"] = ["pytest", "pytest-cov", "pytest-mock"]
+extras["dev"] = extras["test"]
+extras["vision"] = ["torchvision", "albumentations"]
+
 
 def write_version_info():
     # get version
@@ -54,7 +63,7 @@ def install(version):
         url="https://github.com/TidalPaladin/dl-template",
         package_dir="",
         packages=find_packages(),
-        install_requires=install_requires,
+        install_requires=requirements,
         extras_require=extras,
         python_requires=">=3.7.0",
         classifiers=[

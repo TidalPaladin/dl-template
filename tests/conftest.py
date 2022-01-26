@@ -1,6 +1,24 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import pytest
+import torch
+import pytorch_lightning
+import pytorch_lightning as pl
+import torchmetrics
+import pl_bolts
+from typing import Final
+
+from combustion.testing import cuda_or_skip as cuda_or_skip_mark
+from combustion.testing.utils import cuda_available
+from pytorch_lightning.loggers import WandbLogger
+from pathlib import Path
+
+LIBRARIES: Final = (
+    torch,
+    pytorch_lightning,
+    torchmetrics,
+    pl_bolts,
+)
 
 
 @pytest.fixture(scope="session")
@@ -13,75 +31,37 @@ def ignite():
     return pytest.importorskip("ignite", reason="test requires ignite")
 
 
+@pytest.fixture(
+    params=[
+        pytest.param(False, id="no_cuda"),
+        pytest.param(True, marks=cuda_or_skip_mark, id="cuda"),
+    ]
+)
+def cuda(torch, request):
+    return request.param
+
+
 @pytest.fixture(scope="session")
-def cuda(torch):
-    if not torch.cuda.is_available():
+def cuda_or_skip(torch):
+    if not cuda_available():
         pytest.skip("test requires cuda")
 
 
 def pytest_report_header(config):
-    try:
-        import torch
-        import ignite
-
-        return "torch version: %s\nignite version: %s" % (torch.__version__, ignite.__version__,)
-    except ImportError:
-        return ""
-
-
-@pytest.fixture(scope="session")
-def np():
-    return pytest.importorskip("numpy", reason="test requires numpy")
-
-
-def pytest_addoption(parser):
-    parser.addoption(
-        "--tf", action="store_true", default=False, help="run tests requiring tensorflow",
-    )
-    parser.addoption(
-        "--torch", action="store_true", default=False, help="run tests requiring pytorch",
-    )
-    parser.addoption(
-        "--all", action="store_true", default=False, help="run all tests including torch/tf",
-    )
-
-
-def pytest_runtest_setup(item):
-    requires_tf = bool(next(item.iter_markers(name="requires_tf"), False))
-    requires_torch = bool(next(item.iter_markers(name="requires_torch"), False))
-    requires_neither = not (requires_tf or requires_torch)
-
-    testing_tf = item.config.getoption("--tf")
-    testing_torch = item.config.getoption("--torch")
-    testing_neither = not (testing_tf or testing_torch)
-
-    if item.config.getoption("--all"):
-        return
-    if requires_tf and not testing_tf:
-        pytest.skip("test requires tensorflow")
-    if requires_torch and not testing_torch:
-        pytest.skip("test requires pytorch")
-    if requires_neither and not testing_neither:
-        pytest.skip("test foo")
+    s = "Version Information:\n"
+    for library in LIBRARIES:
+        s += f"{library.__name__} version: {library.__version__}\n"
+    return s
 
 
 @pytest.fixture
-def mock_args(mocker):
-    m = mocker.MagicMock(name="args")
-    m.log_format = "[%(asctime)s %(levelname).1s] - %(message)s"
-    mocker.patch("combustion.args.parse_args", return_value=m)
-    return m
+def logger(mocker):
+    logger = mocker.MagicMock(name="logger", spec_set=WandbLogger)
+    return logger
 
-
-@pytest.fixture(scope="session")
-def matlab_saver():
-    h5py = pytest.importorskip("h5py")
-
-    def func(path, to_save):
-        f = h5py.File(path, "w")
-        for k, v in to_save.items():
-            f.create_dataset(k, data=v)
-            f.flush()
-        f.close()
-
-    return func
+@pytest.fixture
+def lightning_module(mocker, logger):
+    trainer = pl.Trainer(logger=logger)
+    module = pl.LightningModule()
+    module.trainer = trainer
+    return module

@@ -19,9 +19,10 @@ include $(CONFIG_FILE)
 endif
 
 
-check: 
+check: ## runs quality/style checks and tests
 	$(MAKE) style
 	$(MAKE) quality
+	$(MAKE) types
 	$(MAKE) test
 
 ci-test: $(VENV)/bin/activate-test
@@ -39,48 +40,28 @@ clean:
 	find $(CLEAN_DIRS) -name '*@neomake*' -type f -delete
 	find $(CLEAN_DIRS) -name '*.pyc' -type f -delete
 	find $(CLEAN_DIRS) -name '*,cover' -type f -delete
-	rm -rf dist
+	find $(CLEAN_DIRS) -name '*.orig' -type f -delete
 
 clean-venv:
 	rm -rf $(VENV)
 
-demo: $(CONFIG_FILE)
-	$(PYTHON) -m $(PROJECT) trainer.params.default_root_dir=$(OUTPUT_PATH)
-
-docker-build: 
-	docker build \
-		--target release \
-		-t $(PROJECT):latest \
-		--file ./docker/Dockerfile \
-		./
-
-docker-run: $(CONFIG_FILE)
-	mkdir -p ./outputs ./data ./conf
-	docker run --rm -it --name $(PROJECT) \
-		--gpus all \
-		--shm-size 8G \
-		-v $(DATA_PATH):/app/data \
-		-v $(CONF_PATH):/app/conf \
-		-v $(OUTPUT_PATH):/app/outputs \
-		$(PROJECT):latest \
-		-c "python examples/basic"
 
 init:
 	git submodule update --init --recursive
 	$(MAKE) venv
 
-package: venv
-	rm -rf dist
-	$(PYTHON) -m pip install --upgrade setuptools wheel
-	export COMBUSTION_BUILD_VERSION=$(VERSION) && $(PYTHON) setup.py sdist bdist_wheel
-
-pre-commit: 
-	pre-commit install
+node_modules:
+	npm install
 
 quality: $(VENV)/bin/activate-quality
 	$(MAKE) clean
 	$(PYTHON) -m black --check --line-length $(LINE_LEN) --target-version $(PY_VER_SHORT) $(QUALITY_DIRS)
 	$(PYTHON) -m flake8 --max-doc-length $(DOC_LEN) --max-line-length $(LINE_LEN) $(QUALITY_DIRS) 
+
+reset:
+	$(MAKE) clean
+	$(MAKE) clean-venv
+	$(MAKE) check
 
 run: $(CONFIG_FILE)
 	$(PYTHON) -m $(PROJECT)
@@ -91,42 +72,35 @@ style: $(VENV)/bin/activate-quality
 	$(PYTHON) -m autopep8 -a -r -i --max-line-length=$(LINE_LEN) $(QUALITY_DIRS)
 	$(PYTHON) -m black --line-length $(LINE_LEN) --target-version $(PY_VER_SHORT) $(QUALITY_DIRS)
 
-tag-version: version.txt
-	git tag -a "$(VERSION)"
 
-test: $(VENV)/bin/activate-test
+test: $(VENV)/bin/requirements.dev.txt
 	$(PYTHON) -m pytest \
 		-rs \
-		--cov=./src \
+		--cov=./$(PROJECT) \
 		--cov-report=xml \
-		-s -v \
+		--cov-report=term \
 		./tests/
 
-test-%: $(VENV)/bin/activate-test
+test-%: $(VENV)/bin/requirements.dev.txt
 	$(PYTHON) -m pytest -rs -k $* -s -v ./tests/ 
 
-test-pdb-%: $(VENV)/bin/activate-test
+test-pdb-%: $(VENV)/bin/requirements.dev.txt
 	$(PYTHON) -m pytest -rs --pdb -k $* -s -v ./tests/ 
 
-upload: package
-	$(PYTHON) -m pip install --upgrade twine
-	$(PYTHON) -m twine upload --repository pypi dist/*
-
-upload-test: package
-	$(PYTHON) -m pip install --upgrade twine
-	$(PYTHON) -m twine upload --repository testpypi dist/*
+types: $(VENV)/bin/requirements.dev.txt node_modules ## checks types with pyright
+	npx --no-install pyright -p pyrightconfig.json
 
 venv: $(VENV)/bin/activate
 
 $(VENV)/bin/activate: setup.py requirements.txt 
-	test -d $(VENV) || $(PY_VER) -m venv $(VENV)
+	test -d $(VENV) || python3 -m virtualenv -p $(PY_VER) $(VENV)
 	$(PYTHON) -m pip install -U pip 
 	$(PYTHON) -m pip install -r requirements.txt
 	$(PYTHON) -m pip install -e .
 	touch $(VENV)/bin/activate
 
-$(VENV)/bin/activate-%: requirements.%.txt
-	test -d $(VENV) || $(PY_VER) -m venv $(VENV)
+$(VENV)/bin/requirements.%.txt: requirements.%.txt
+	test -d $(VENV) || python3 -m virtualenv -p $(PY_VER) $(VENV)
 	$(PYTHON) -m pip install -U pip 
 	$(PYTHON) -m pip install -r $<
-	touch $(VENV)/bin/activate-$*
+	touch $(VENV)/bin/$<

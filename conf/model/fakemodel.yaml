@@ -1,7 +1,0 @@
-# @package _group_
-_target_: project.model.FakeModel
-params:
-  in_features: 1
-  out_features: 10
-  num_classes: 10
-  kernel: 3

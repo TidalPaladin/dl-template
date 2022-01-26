@@ -13,8 +13,10 @@ L = TypeVar("L", bound="Loss")
 
 @dataclass
 class Loss(TensorDataclass, BatchMixin):
-    ...
+    r"""Base container for losses"""
+    cls_loss: Tensor
 
     @abstractproperty
     def total_loss(self) -> Tensor:
-        ...
+        r"""Returns a total loss value suitable for backprop."""
+        return self.cls_loss

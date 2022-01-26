@@ -7,20 +7,12 @@ from ..structs import Example, Prediction, Mode
 from typing import Optional
 from abc import abstractmethod
 
+
 class DataclassMetricMixin:
-
-    def update(self, pred: Prediction, true: Example) -> None:
-        ...
-
-class MetricCollection(nn.Module):
-
-    def __init__(self):
-        self.lookup = nn.ModuleDict()
+    r"""Mixin for :class`tm.Metric` subclasses that implement :func:`update` using
+    :class:`Prediction` and :class:`Example` dataclasses as input
+    """
 
     @abstractmethod
-    def register(self, mode: Mode, dataset: Optional[str] = None):
+    def update(self, example: Example, pred: Prediction) -> None:
         ...
-
-    def update(self, *args, **kwargs) -> None:
-        ...
-
