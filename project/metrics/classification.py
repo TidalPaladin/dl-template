@@ -67,6 +67,7 @@ class ConfusionMatrix(tm.ConfusionMatrix, DataclassMetricMixin):
         else:
             fig = None
 
+        # TODO ensure the pred/true axes of conf_mat match what ConfusionMatrixDisplay expects
         cm = ConfusionMatrixDisplay(conf_mat.cpu().numpy(), display_labels=display_labels)
         cm.plot(ax=ax, colorbar=False)
         return fig

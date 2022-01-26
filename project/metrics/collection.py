@@ -156,7 +156,9 @@ class MetricStateCollection(ModuleStateCollection[MetricCollection]):
 
     def register(self, state: State, device: Union[str, torch.device] = "cpu"):
         r"""Register a :class:`MetricCollection` for a given :class:`State`."""
-        if self._collection is None:
+        if state in self.states:
+            return
+        elif self._collection is None:
             raise ValueError(
                 "Value of `collection` in init cannot be `None` to use `register`. "
                 "Either supply a `MetricCollection` in init, or manually register collections "
@@ -258,6 +260,8 @@ class QueueStateCollection(StateCollection[PriorityQueue[PrioritizedItem[P]]]):
         self._lookup = {}
 
     def register(self, state: State, maxsize: int = 0):
+        if state in self.states:
+            return
         queue = PriorityQueue(maxsize=maxsize)
         self.set_state(state, queue)
 

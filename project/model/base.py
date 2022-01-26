@@ -147,6 +147,7 @@ class BaseModel(pl.LightningModule, Generic[I, O, L]):
 
     def on_fit_start(self):
         r"""Initialize validation/training metrics"""
+        # TODO: should we unregister these states in on_fit_end? 
         for mode in (Mode.TRAIN, Mode.VAL):
             for name in self.dataset_names(mode):
                 state = State(mode, name if mode == Mode.VAL else None)

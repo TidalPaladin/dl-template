@@ -82,6 +82,7 @@ class WandBImageTarget(ImageTarget[I, O]):
         return cls(example, pred)
 
 
+# TODO check if images from multiple GPUs end up in a single shared queue
 class QueuedImageLoggingCallback(QueuedLoggingCallback[I, O]):
     queues: QueueStateCollection
 

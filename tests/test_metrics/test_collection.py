@@ -39,6 +39,14 @@ class BaseCollectionTest:
         col.register(state)
         assert state in col.states
 
+    @pytest.mark.parametrize("state", simple_states)
+    def test_register_already_registered(self, state):
+        col = self.CLS()
+        col.register(state)
+        val = col.get_state(state)
+        col.register(state)
+        assert col.get_state(state) is val
+
     def test_hash(self):
         col = self.CLS()
         col2 = self.CLS()
