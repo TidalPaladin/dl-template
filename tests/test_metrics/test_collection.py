@@ -89,6 +89,15 @@ class TestMetricStateCollection(BaseCollectionTest):
     CLS: Type[MetricStateCollection] = SimpleMetricCollection
     VAL = MetricCollection({})
 
+    def test_summary(self):
+        col = MetricStateCollection(MetricCollection({"foo": Accuracy()}))
+        state1 = State(Mode.TRAIN, None)
+        state2 = State(Mode.VAL, "cifar10")
+        col.register(state1)
+        col.register(state2)
+        s = col.summarize()
+        assert isinstance(s, str)
+
     def test_to_cpu(self):
         col = self.CLS()
         state = State(Mode.TEST, "cifar10")
@@ -109,6 +118,16 @@ class TestMetricStateCollection(BaseCollectionTest):
         device = torch.device("cuda:0")
         col2 = col.to(device)
         for s, collection in col2.as_dict().items():
+            for name, metric in collection.items():
+                assert metric.device == device
+
+    @pytest.mark.cuda_or_skip
+    def test_register_gpu(self):
+        col = self.CLS()
+        device = torch.device("cuda:0")
+        state = State(Mode.TEST, "cifar10")
+        col.register(state, device=device)
+        for s, collection in col.as_dict().items():
             for name, metric in collection.items():
                 assert metric.device == device
 

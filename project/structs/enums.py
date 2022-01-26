@@ -25,7 +25,7 @@ class State:
     dataset: Optional[str] = None
     sanity_checking: bool = False
 
-    _seen_datasets: Set[str] = field(default_factory=set, repr=False, hash=False)
+    _seen_datasets: Set[str] = field(default_factory=set, repr=False, hash=False, compare=False)
 
     def update(self, mode: Mode, dataset: Optional[str]) -> "State":
         return self.set_mode(mode).set_dataset(dataset)

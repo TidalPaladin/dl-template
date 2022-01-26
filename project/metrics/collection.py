@@ -7,7 +7,7 @@ from torch.optim import AdamW
 from enum import Enum
 from abc import abstractmethod, abstractproperty, ABC
 from ..structs import Example, Prediction, Mode, I, O, L, Loss, State
-from typing import TypeVar, Generic, Any, Type, ClassVar, cast, Hashable, Dict, Sequence, Optional, Set, Tuple, Iterator, Union
+from typing import TypeVar, Generic, Any, Type, ClassVar, cast, Hashable, Dict, Sequence, Optional, Set, Tuple, Iterator, Union, List
 import pytorch_lightning as pl
 from functools import wraps
 from combustion.util import MISSING
@@ -168,7 +168,7 @@ class MetricStateCollection(ModuleStateCollection[MetricCollection]) :
                 "with `set_state`"
             )
         device = torch.device(device)
-        collection = self._collection.clone(prefix=state.prefix)
+        collection = self._collection.clone(prefix=state.prefix).to(device)
         self.set_state(state, collection)
 
     def update(self, state: State, *args, **kwargs) -> MetricCollection:
@@ -230,6 +230,20 @@ class MetricStateCollection(ModuleStateCollection[MetricCollection]) :
                 joined = join_collections(collection, other_collection)
                 output.set_state(state, joined)
         return output
+
+    def summarize(self) -> str:
+        lines: List[Tuple[str, str]] = []
+        maxlen = 0
+        for state in self.states:
+            collection = self.get_state(state)
+            for name, metric in collection.items():
+                lines.append((name, str(metric)))
+                maxlen = max(maxlen, len(name))
+        fmt = "{0:<" + str(maxlen) + "} -> {1}\n"
+        s = ""
+        for name, metric in lines:
+            s += fmt.format(name, metric)
+        return s
 
 
 @dataclass(order=True)

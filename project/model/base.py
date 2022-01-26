@@ -155,12 +155,19 @@ class BaseModel(pl.LightningModule, Generic[I, O, L]):
                 metrics = self.get_metrics(state).to(self.device)
                 self.state_metrics.set_state(state, metrics)
 
+        # TODO: this doesn't print for some reason
+        self.print("Metrics:")
+        self.print(self.state_metrics.summarize())
+
     def on_test_start(self):
         r"""Initialize testing metrics"""
         for name in self.dataset_names(Mode.TEST):
             state = State(Mode.TEST, name)
             metrics = self.get_metrics(state).to(self.device)
             self.state_metrics.set_state(state, metrics)
+
+        self.print("Metrics:")
+        self.print(self.state_metrics.summarize())
 
     def on_before_batch_transfer(self, batch: Any, dataloader_idx: int):
         r"""Wraps the input batch in an ``Example`` instance if necessary"""

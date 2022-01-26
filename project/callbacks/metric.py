@@ -26,6 +26,7 @@ import wandb
 from pytorch_lightning.loggers import LightningLoggerBase
 from tqdm import tqdm
 from PIL import Image
+from torchmetrics import MetricCollection
 import io
 
 T = TypeVar("T", bound="ImageTarget")
@@ -73,7 +74,7 @@ class ErrorAtUncertaintyCallback(MetricLoggingCallback):
     ):
         kwargs["from_logits"] = True
         kwargs.setdefault("num_bins", 10)
-        metric = ErrorAtUncertainty(**kwargs)
+        metric = MetricCollection({name: ErrorAtUncertainty(**kwargs)})
         super().__init__(name, modes, metric, ErrorAtUncertaintyTarget, log_on_step)
 
 @dataclass
@@ -108,5 +109,5 @@ class ConfusionMatrixCallback(MetricLoggingCallback):
         log_on_step: bool = False,
         **kwargs,
     ):
-        metric = ConfusionMatrix(**kwargs)
+        metric = MetricCollection({name: ConfusionMatrix(**kwargs)})
         super().__init__(name, modes, metric, ConfusionMatrixTarget, log_on_step)
