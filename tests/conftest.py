@@ -1,17 +1,18 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+from typing import Final
+
+import pl_bolts
 import pytest
-import torch
 import pytorch_lightning
 import pytorch_lightning as pl
+import torch
 import torchmetrics
-import pl_bolts
-from typing import Final
+from pytorch_lightning.loggers import WandbLogger
 
 from combustion.testing import cuda_or_skip as cuda_or_skip_mark
 from combustion.testing.utils import cuda_available
-from pytorch_lightning.loggers import WandbLogger
-from pathlib import Path
+
 
 LIBRARIES: Final = (
     torch,
@@ -58,6 +59,7 @@ def pytest_report_header(config):
 def logger(mocker):
     logger = mocker.MagicMock(name="logger", spec_set=WandbLogger)
     return logger
+
 
 @pytest.fixture
 def lightning_module(mocker, logger):

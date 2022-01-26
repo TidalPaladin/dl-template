@@ -1,21 +1,25 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import torch
-import pytest
-from project.metrics import StateCollection, MetricStateCollection, QueueStateCollection
-from project.structs import State, Mode
-from torchmetrics import MetricCollection, Accuracy, F1
-from typing import Type, Any
 from queue import PriorityQueue
+from typing import Any, Type
+
+import pytest
+import torch
+from torchmetrics import F1, Accuracy, MetricCollection
+
+from project.metrics import MetricStateCollection, QueueStateCollection, StateCollection
+from project.structs import Mode, State
+
 
 class SimpleMetricCollection(MetricStateCollection):
-
     def __init__(self):
-        collection = MetricCollection({
-            f"accuracy": Accuracy(),
-            f"f1": F1(),
-        })
+        collection = MetricCollection(
+            {
+                "accuracy": Accuracy(),
+                "f1": F1(),
+            }
+        )
         super().__init__(collection)
 
 
@@ -23,12 +27,12 @@ class BaseCollectionTest:
     CLS: Type[StateCollection]
     VAL: Any
 
-    simple_states =  [
+    simple_states = [
         pytest.param(State(Mode.TRAIN, None)),
         pytest.param(State(Mode.VAL, "cifar10")),
         pytest.param(State(Mode.TEST, "imagenet")),
     ]
-    
+
     @pytest.mark.parametrize("state", simple_states)
     def test_register(self, state):
         col = self.CLS()
@@ -147,10 +151,10 @@ class TestMetricStateCollection(BaseCollectionTest):
 
         for s, collection in col2.as_dict().items():
             for name, metric in collection.items():
-                assert metric.tp.item() == 0 #type: ignore
-                assert metric.fp.item() == 0 #type: ignore
-                assert metric.tn.item() == 0 #type: ignore
-                assert metric.fn.item() == 0 #type: ignore
+                assert metric.tp.item() == 0  # type: ignore
+                assert metric.fp.item() == 0  # type: ignore
+                assert metric.tn.item() == 0  # type: ignore
+                assert metric.fn.item() == 0  # type: ignore
 
 
 class TestQueueStateCollection(BaseCollectionTest):
@@ -161,8 +165,8 @@ class TestQueueStateCollection(BaseCollectionTest):
     def test_enqueue(self, state):
         col = self.CLS()
         col.register(state)
-        col.enqueue(state, 0, "dog") 
-        col.enqueue(state, 1, "cat") 
+        col.enqueue(state, 0, "dog")
+        col.enqueue(state, 1, "cat")
         queue = col.get_state(state)
         assert queue.qsize() == col.qsize(state) == 2
         assert not col.empty(state)
@@ -171,8 +175,8 @@ class TestQueueStateCollection(BaseCollectionTest):
     def test_dequeue(self, state):
         col = self.CLS()
         col.register(state)
-        col.enqueue(state, 1, "cat") 
-        col.enqueue(state, 0, "dog") 
+        col.enqueue(state, 1, "cat")
+        col.enqueue(state, 0, "dog")
         queue = col.get_state(state)
         assert queue.qsize() == 2
 
@@ -189,11 +193,11 @@ class TestQueueStateCollection(BaseCollectionTest):
         state2 = State(Mode.INFER, "state2")
         col.register(state2)
 
-        col.enqueue(state, 0, "dog") 
-        col.enqueue(state, 1, "cat") 
+        col.enqueue(state, 0, "dog")
+        col.enqueue(state, 1, "cat")
         assert len(col) == 2
-        col.enqueue(state2, 0, "dog") 
-        col.enqueue(state2, 1, "cat") 
+        col.enqueue(state2, 0, "dog")
+        col.enqueue(state2, 1, "cat")
         assert len(col) == 4
 
     def test_reset(self):

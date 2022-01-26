@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-from pathlib import Path
+
+from typing import Type
 
 import pytest
 import torch
-from torch import tensor
-from project.structs import Prediction, BinaryPrediction, MultiClassPrediction
-from typing import Type
+
+from project.structs import BinaryPrediction, MultiClassPrediction, Prediction
 
 
 class BaseTest:

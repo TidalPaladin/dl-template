@@ -1,29 +1,18 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, ForwardRef, Iterable, List, Optional, Tuple, Type, TypeVar, Union, cast
+
 import torch
-from torch import Tensor
-import torch.nn.functional as F
-from torch.optim import AdamW
-from torch.optim.lr_scheduler import OneCycleLR
-from enum import Enum
-from abc import abstractmethod, abstractproperty, abstractclassmethod
-from ..structs import Example, Prediction, State, I, O, L, Loss, MultiClassPrediction, Mode, ResizeMixin, BinaryPrediction, MultiClassPrediction
-from ..metrics import StateCollection, MetricStateCollection, QueueStateCollection, PrioritizedItem
-from typing import TypeVar, Generic, Any, Type, ClassVar, cast, Optional, List, Set, Iterator, Dict, Tuple, Union, Iterable, TYPE_CHECKING, ForwardRef
-import pytorch_lightning as pl
-import matplotlib.pyplot as plt
-from functools import wraps
-from combustion.util import MISSING
-from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.utilities import rank_zero_only
-from queue import PriorityQueue
-from dataclasses import dataclass, field
-from pytorch_lightning.callbacks import Callback
-from .base import LoggingTarget, QueuedLoggingCallback, IntervalLoggingCallback
 import wandb
-from pytorch_lightning.loggers import LightningLoggerBase
-from tqdm import tqdm
+from pytorch_lightning.utilities import rank_zero_only
+from torch import Tensor
+
+from ..metrics import QueueStateCollection
+from ..structs import BinaryPrediction, I, Mode, MultiClassPrediction, O, ResizeMixin
+from .base import LoggingTarget, QueuedLoggingCallback
+
 
 T = TypeVar("T", bound="ImageTarget")
 
@@ -57,7 +46,7 @@ class ImageTarget(LoggingTarget[I, O]):
 
         else:
             caption = f"P={self.pred.probs.argmax():0.3f}"
-        
+
         return caption
 
     @classmethod
@@ -67,11 +56,10 @@ class ImageTarget(LoggingTarget[I, O]):
 
 @dataclass
 class WandBImageTarget(ImageTarget[I, O]):
-
     @rank_zero_only
     def log(
-        self, 
-        pl_module: BaseModel, 
+        self,
+        pl_module: BaseModel,
         tag: str,
         step: int,
     ) -> wandb.Image:
@@ -79,16 +67,13 @@ class WandBImageTarget(ImageTarget[I, O]):
 
     @classmethod
     def deferred_log(
-        cls, 
-        pl_module: BaseModel, 
+        cls,
+        pl_module: BaseModel,
         tag: str,
         step: int,
         targets: List[wandb.Image],
     ) -> None:
-        target = {
-            "trainer/global_step": step,
-            tag: targets
-        }
+        target = {"trainer/global_step": step, tag: targets}
         if not pl_module.state.sanity_checking:
             pl_module.logger.experiment.log(target, commit=False)
 
@@ -97,19 +82,18 @@ class WandBImageTarget(ImageTarget[I, O]):
         return cls(example, pred)
 
 
-
 class QueuedImageLoggingCallback(QueuedLoggingCallback[I, O]):
     queues: QueueStateCollection
 
     def __init__(
-        self, 
+        self,
         name: str,
         queue_size: int,
         modes: Iterable[Mode] = [Mode.VAL, Mode.TEST],
         max_size: Optional[Tuple[int, int]] = None,
         target_cls: Type[ImageTarget] = WandBImageTarget,
         flush_interval: int = 0,
-        negate_priority: bool = False
+        negate_priority: bool = False,
     ):
         self.queue_size = queue_size
         self.max_size = max_size
@@ -148,6 +132,6 @@ class QueuedImageLoggingCallback(QueuedLoggingCallback[I, O]):
         if self.max_size is not None and isinstance(example, ResizeMixin):
             example = example.resize_to_fit(self.max_size, mode="bilinear", align_corners=False)
         if self.max_size is not None and isinstance(pred, ResizeMixin):
-            pred = cast(ResizeMixin, pred).resize_to_fit(self.max_size, mode="bilinear", align_corners=False)
+            pred = cast(O, cast(ResizeMixin, pred).resize_to_fit(self.max_size, mode="bilinear", align_corners=False))
 
-        return self.target_cls.create(example, pred)
+        return self.target_cls.create(example, pred)  # type: ignore

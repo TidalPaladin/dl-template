@@ -1,15 +1,19 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from abc import abstractproperty
+from dataclasses import dataclass
+from typing import Iterable, Type, TypeVar
+
 import torch
 from torch import Tensor
-from dataclasses import dataclass
-from typing import Iterable, TypeVar, Type
-from combustion.util.dataclasses import TensorDataclass, BatchMixin
-from abc import abstractproperty
+
 from combustion.lightning.metrics import Entropy
+from combustion.util.dataclasses import BatchMixin, TensorDataclass
+
 
 O = TypeVar("O", bound="Prediction")
+
 
 @dataclass(repr=False, eq=False)
 class Prediction(TensorDataclass, BatchMixin):
@@ -19,7 +23,7 @@ class Prediction(TensorDataclass, BatchMixin):
     __slice_fields__ = ["logits"]
 
     def __eq__(self, other: "Prediction") -> bool:
-        return torch.allclose(self.logits, other.logits) 
+        return torch.allclose(self.logits, other.logits)
 
     @abstractproperty
     def probs(self) -> Tensor:
@@ -30,7 +34,7 @@ class Prediction(TensorDataclass, BatchMixin):
         return self.logits.ndim >= 2
 
     @classmethod
-    def from_unbatched(cls: Type[O], predictions: Iterable[O]) -> O: 
+    def from_unbatched(cls: Type[O], predictions: Iterable[O]) -> O:
         logits = torch.stack([pred.logits for pred in predictions], dim=0)
         return cls(logits)
 
@@ -42,7 +46,6 @@ class Prediction(TensorDataclass, BatchMixin):
 
 @dataclass(repr=False, eq=False)
 class BinaryPrediction(Prediction):
-
     def __post_init__(self):
         if not 1 <= self.logits.ndim <= 2:
             raise ValueError(f"Unexpected shape {self.logits.shape} for `logits`")
@@ -61,7 +64,6 @@ class BinaryPrediction(Prediction):
 
 @dataclass(repr=False, eq=False)
 class MultiClassPrediction(Prediction):
-
     def __post_init__(self):
         if not 1 <= self.logits.ndim <= 2:
             raise ValueError(f"Unexpected shape {self.logits.shape} for `logits`")
@@ -90,8 +92,8 @@ class MultiClassPrediction(Prediction):
         elif abs(ndim_diff) >= 1:
             raise ValueError(f"Shape mismatch: {self.logits.shape} vs {classes.shape}")
 
-        assert self.logits.ndim == classes.ndim 
+        assert self.logits.ndim == classes.ndim
         assert classes.shape[-1] == 1
         if (classes >= self.num_classes).any():
-            raise ValueError(f"`classes` contained an index greater than `self.num_classes`")
+            raise ValueError("`classes` contained an index greater than `self.num_classes`")
         return self.probs[..., classes]

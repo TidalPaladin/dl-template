@@ -1,50 +1,51 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from typing import Dict
+
 import pytest
 import torch
-import pytorch_lightning as pl
-from project.callbacks import QueuedImageLoggingCallback, WandBImageTarget, ImageTarget
-from project.structs import BinaryPrediction, Example, MultiClassPrediction, State, Mode
-from typing import List, Dict
+
+from project.callbacks import ImageTarget, QueuedImageLoggingCallback
+from project.structs import BinaryPrediction, Example, Mode, MultiClassPrediction, State
+
 
 class TestQueuedImageLoggingCallback:
-    
     def test_init(self):
         cb = QueuedImageLoggingCallback("img", queue_size=16)
 
-    @pytest.mark.parametrize("label,score,exp", [
-        pytest.param(None, 0.5, 0.0),
-        pytest.param(1.0, 0.0, 1.0),
-        pytest.param(0.0, 1.0, 1.0),
-        pytest.param(0.0, 0.0, 0.0),
-        pytest.param(1.0, 1.0, 0.0),
-        pytest.param(0.5, 0.5, 0.0),
-    ])
+    @pytest.mark.parametrize(
+        "label,score,exp",
+        [
+            pytest.param(None, 0.5, 0.0),
+            pytest.param(1.0, 0.0, 1.0),
+            pytest.param(0.0, 1.0, 1.0),
+            pytest.param(0.0, 0.0, 0.0),
+            pytest.param(1.0, 1.0, 0.0),
+            pytest.param(0.5, 0.5, 0.0),
+        ],
+    )
     def test_get_priority_binary(self, label, score, exp):
         eps = 1e-8
         logit = torch.tensor(score).logit(eps=eps)
 
-        example = Example(
-            img=torch.rand(3, 32, 32),
-            label=torch.tensor(label).view(1) if label is not None else None
-        )
+        example = Example(img=torch.rand(3, 32, 32), label=torch.tensor(label).view(1) if label is not None else None)
         pred = BinaryPrediction(logits=logit.view(1))
         priority = QueuedImageLoggingCallback.get_priority(example, pred)
         assert abs(priority - exp) <= eps
 
-    @pytest.mark.parametrize("label,logits,exp", [
-        pytest.param(None, (0, 0), 0.0),
-        pytest.param(0, (0.0, 0.0), 0.5),
-        pytest.param(1, (0.0, 0.0), 0.5),
-        pytest.param(0, (-1.0, 1.0), 1 - 0.1192029), # probs -> (0.1192029, 0.8807971)
-        pytest.param(1, (-1.0, 1.0), 1 - 0.8807971),
-    ])
+    @pytest.mark.parametrize(
+        "label,logits,exp",
+        [
+            pytest.param(None, (0, 0), 0.0),
+            pytest.param(0, (0.0, 0.0), 0.5),
+            pytest.param(1, (0.0, 0.0), 0.5),
+            pytest.param(0, (-1.0, 1.0), 1 - 0.1192029),  # probs -> (0.1192029, 0.8807971)
+            pytest.param(1, (-1.0, 1.0), 1 - 0.8807971),
+        ],
+    )
     def test_get_priority_multiclass(self, label, logits, exp):
-        example = Example(
-            img=torch.rand(3, 32, 32),
-            label=torch.tensor(label).view(1) if label is not None else None
-        )
+        example = Example(img=torch.rand(3, 32, 32), label=torch.tensor(label).view(1) if label is not None else None)
         pred = MultiClassPrediction(logits=torch.tensor(logits))
         priority = QueuedImageLoggingCallback.get_priority(example, pred)
         assert abs(priority - exp) <= 1e-4
@@ -58,11 +59,14 @@ class TestQueuedImageLoggingCallback:
         with pytest.raises(ValueError):
             QueuedImageLoggingCallback.get_priority(example, pred)
 
-    @pytest.mark.parametrize("max_size", [
-        None, 
-        (16, 16),
-        (32, 16),
-    ])
+    @pytest.mark.parametrize(
+        "max_size",
+        [
+            None,
+            (16, 16),
+            (32, 16),
+        ],
+    )
     def test_prepare_logging_target(self, max_size):
         example = Example(
             img=torch.rand(4, 3, 32, 32),
@@ -92,7 +96,7 @@ class TestQueuedImageLoggingCallback:
         )
 
         # build a dict of priority, prediction pairs
-        total_size = 2*queue_size
+        total_size = 2 * queue_size
         priority = torch.rand(total_size)
         preds: Dict[float, BinaryPrediction] = {}
         for p in priority:
@@ -155,21 +159,21 @@ class TestQueuedImageLoggingCallback:
             assert isinstance(p, BinaryPrediction)
 
     @pytest.mark.skip
-    @pytest.mark.parametrize("mode,should_log", [
-        pytest.param(Mode.TRAIN, True),
-        pytest.param(Mode.VAL, False),
-        pytest.param(Mode.TEST, False),
-    ])
+    @pytest.mark.parametrize(
+        "mode,should_log",
+        [
+            pytest.param(Mode.TRAIN, True),
+            pytest.param(Mode.VAL, False),
+            pytest.param(Mode.TEST, False),
+        ],
+    )
     def test_training_log(self, lightning_module, logger, mode, should_log):
         state = State(mode)
         lightning_module.state = state
         cb = QueuedImageLoggingCallback("img", 8)
 
         B = 4
-        example = Example(
-            img=torch.rand(B, 3, 32, 32),
-            label=torch.randint(0, 1, (B, 1))
-        )
+        example = Example(img=torch.rand(B, 3, 32, 32), label=torch.randint(0, 1, (B, 1)))
         pred = BinaryPrediction(torch.rand(B, 1))
 
         cb.on_train_batch_end(
@@ -195,10 +199,7 @@ class TestQueuedImageLoggingCallback:
 
         B = 4
         for _ in range(3):
-            example = Example(
-                img=torch.rand(B, 3, 32, 32),
-                label=torch.randint(0, 1, (B, 1))
-            )
+            example = Example(img=torch.rand(B, 3, 32, 32), label=torch.randint(0, 1, (B, 1)))
             pred = BinaryPrediction(torch.rand(B, 1))
             cb.on_train_batch_end(
                 lightning_module.trainer,
@@ -211,11 +212,7 @@ class TestQueuedImageLoggingCallback:
         logger.experiment.log.assert_not_called()
         assert cb.total_queued_items <= queue_size
 
-        cb._on_epoch_end(
-            lightning_module.trainer,
-            lightning_module,
-            mode
-        )
+        cb._on_epoch_end(lightning_module.trainer, lightning_module, mode)
 
         logger.experiment.log.assert_called()
         assert 0 < logger.experiment.log.call_count <= queue_size

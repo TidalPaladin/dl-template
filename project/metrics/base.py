@@ -1,11 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import torch.nn as nn
-import torchmetrics as tm
-from ..structs import Example, Prediction, Mode
-from typing import Optional
 from abc import abstractmethod
+
+from ..structs import Example, Prediction
 
 
 class DataclassMetricMixin:

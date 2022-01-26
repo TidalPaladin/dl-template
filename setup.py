@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import os
-import subprocess 
-from setuptools import setup, find_packages
+import subprocess
+
+from setuptools import find_packages, setup
+
 
 # Name of project here
 PROJECT = "project"

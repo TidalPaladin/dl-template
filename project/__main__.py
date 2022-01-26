@@ -1,17 +1,15 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-import logging
-import os
-import pytorch_lightning as pl
-from pathlib import Path
-from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.callbacks import LearningRateMonitor
-from pytorch_lightning.utilities.cli import LightningCLI
-from pl_bolts.datamodules import CIFAR10DataModule
 from functools import partial
-from .model import ConvModel, BaseModel
-from pytorch_lightning.plugins import DDPPlugin, SingleDevicePlugin
-from typing import Union, List
+from pathlib import Path
+from typing import List, Union
+
+import pytorch_lightning as pl
+from pl_bolts.datamodules import CIFAR10DataModule
+from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning.plugins import DDPPlugin
+
+from .model import BaseModel, ConvModel
 
 
 def patch_logger(logger: WandbLogger) -> WandbLogger:
@@ -54,9 +52,8 @@ def main():
         gradient_clip_val=10.0,
         default_root_dir=ROOT,
     )
-    
-    trainer.fit(model, datamodule=datamodule)
 
+    trainer.fit(model, datamodule=datamodule)
 
 
 if __name__ == "__main__":

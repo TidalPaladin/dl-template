@@ -2,13 +2,16 @@
 # -*- coding: utf-8 -*-
 
 
+from typing import Type
+
+import matplotlib.pyplot as plt
+import pytest
 import torch
 from torch import Tensor
-import pytest
-from project.metrics import StateCollection, Accuracy, UCE, ConfusionMatrix, Entropy
-from project.structs import State, Mode, MultiClassPrediction, BinaryPrediction, Example, Prediction
-from typing import Type
-import matplotlib.pyplot as plt
+
+from project.metrics import Accuracy, ConfusionMatrix
+from project.structs import BinaryPrediction, Example, MultiClassPrediction, Prediction
+
 
 class BaseMetricTest:
     B = 10
@@ -26,12 +29,12 @@ class BaseMetricTest:
 
         if issubclass(cls, BinaryPrediction):
             logits = torch.rand(B, N)
-            labels = torch.randint(0, 1, (B, 1))
+            torch.randint(0, 1, (B, 1))
             pred = cls(logits)
 
         elif issubclass(cls, MultiClassPrediction):
             logits = torch.rand(B, N)
-            labels = torch.randint(0, N, (B, 1))
+            torch.randint(0, N, (B, 1))
             pred = cls(logits)
 
         else:
@@ -55,8 +58,8 @@ class BaseMetricTest:
         assert isinstance(x, Tensor)
         return x
 
-class TestAccuracy(BaseMetricTest):
 
+class TestAccuracy(BaseMetricTest):
     @pytest.fixture
     def metric(self):
         return Accuracy(num_classes=self.N)
@@ -65,8 +68,8 @@ class TestAccuracy(BaseMetricTest):
         x = super().test_metric(metric, pred, true)
         assert 0 <= float(x.item()) <= 1.0
 
-class TestConfusionMatrix(BaseMetricTest):
 
+class TestConfusionMatrix(BaseMetricTest):
     @pytest.fixture
     def metric(self):
         return ConfusionMatrix(num_classes=self.N)

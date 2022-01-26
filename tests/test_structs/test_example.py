@@ -1,17 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from pathlib import Path
 
 import pytest
 import torch
-from torch import tensor
+
 from project.structs import Example
-from combustion.util import MISSING
 
 
 class TestExample:
-
     @pytest.fixture(autouse=True)
     def seed(self):
         torch.random.manual_seed(42)
@@ -63,7 +60,6 @@ class TestExample:
         assert e1 != e3
         assert e2 != e3
 
-
     @pytest.mark.parametrize("label", [True, False])
     def test_getitem(self, label):
         t1 = torch.rand(3, 32, 32)
@@ -84,7 +80,6 @@ class TestExample:
         assert e1 == out1
         assert e2 == out2
 
-
     @pytest.mark.parametrize("label", [True, False])
     def test_from_unbatched(self, label):
         t1 = torch.rand(3, 32, 32)
@@ -101,16 +96,19 @@ class TestExample:
 
         assert torch.allclose(batch.img, torch.stack([t1, t2]))
         if label:
-            assert torch.allclose(batch.label, torch.stack([l1, l2])) # type: ignore
+            assert torch.allclose(batch.label, torch.stack([l1, l2]))  # type: ignore
         else:
-            assert batch.label == None
+            assert batch.label is None
 
-    @pytest.mark.parametrize("shape", [
-        (128, 128),
-        (3, 128, 128),
-        (1, 128, 128),
-        (4, 3, 128, 128),
-    ])
+    @pytest.mark.parametrize(
+        "shape",
+        [
+            (128, 128),
+            (3, 128, 128),
+            (1, 128, 128),
+            (4, 3, 128, 128),
+        ],
+    )
     @pytest.mark.parametrize("scale", [0.25, 0.5])
     def test_resize(self, shape, scale):
         img = torch.rand(*shape)
@@ -122,18 +120,24 @@ class TestExample:
         assert H_out == int(H * scale)
         assert W_out == int(W * scale)
 
-    @pytest.mark.parametrize("shape", [
-        (128, 128),
-        (3, 128, 128),
-        (1, 128, 128),
-        (4, 3, 128, 128),
-        (4, 3, 128, 64),
-    ])
-    @pytest.mark.parametrize("max_size", [
-        (128, 128),
-        (64, 64),
-        (64, 32),
-    ])
+    @pytest.mark.parametrize(
+        "shape",
+        [
+            (128, 128),
+            (3, 128, 128),
+            (1, 128, 128),
+            (4, 3, 128, 128),
+            (4, 3, 128, 64),
+        ],
+    )
+    @pytest.mark.parametrize(
+        "max_size",
+        [
+            (128, 128),
+            (64, 64),
+            (64, 32),
+        ],
+    )
     def test_resize_to_fit(self, shape, max_size):
         img = torch.rand(*shape)
         H, W = shape[-2:]

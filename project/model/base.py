@@ -1,35 +1,34 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import torch
-from torch import Tensor
-import torch.nn.functional as F
-from torch.optim import AdamW
-from torch.optim.lr_scheduler import OneCycleLR
-from enum import Enum
-from abc import abstractmethod, abstractproperty
-from ..structs import Example, Prediction, State, I, O, L, Loss, MultiClassPrediction, Mode
-from ..metrics import StateCollection, MetricStateCollection, QueueStateCollection, Accuracy, Entropy, UCE, ErrorAtUncertainty
-from ..callbacks import QueuedImageLoggingCallback, MetricLoggingCallback, ErrorAtUncertaintyCallback, ConfusionMatrixCallback
-from ..data import NamedDataModuleMixin
-from typing import TypeVar, Generic, Any, Type, ClassVar, cast, Optional, List, Set, Iterator, Dict, Tuple, cast, Callable, Iterable
-import pytorch_lightning as pl
+from abc import abstractmethod
+from functools import partial
+from typing import Any, ClassVar, Dict, Generic, Iterable, Iterator, Optional, Tuple, cast
+
 import matplotlib.pyplot as plt
-from functools import wraps, partial
-from combustion.util import MISSING
-from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.utilities import rank_zero_only
-from queue import PriorityQueue
-from dataclasses import dataclass, field
-from pytorch_lightning.loggers import LightningLoggerBase
-from torchmetrics import MetricCollection
+import pytorch_lightning as pl
+import torch.nn.functional as F
 from pytorch_lightning.callbacks import Callback, LearningRateMonitor
+from pytorch_lightning.loggers import LightningLoggerBase, WandbLogger
+from pytorch_lightning.utilities import rank_zero_only
+from torch import Tensor
+from torch.optim import AdamW
+from torch.optim.lr_scheduler import OneCycleLR  # type: ignore
+from torchmetrics import MetricCollection
+
+from combustion.util import MISSING
+
+from ..callbacks import ConfusionMatrixCallback, ErrorAtUncertaintyCallback, QueuedImageLoggingCallback
+from ..data import NamedDataModuleMixin
+from ..metrics import UCE, Accuracy, Entropy, MetricStateCollection
+from ..structs import Example, I, L, Loss, Mode, O, Prediction, State
 
 
 class BaseModel(pl.LightningModule, Generic[I, O, L]):
     r"""Base class for all models."""
     state: State
     example_type: ClassVar[Example] = Example
+    logger: LightningLoggerBase
 
     def __init__(self, lr: float = 1e-3, weight_decay: float = 0, num_classes: int = 10):
         super().__init__()
@@ -64,9 +63,11 @@ class BaseModel(pl.LightningModule, Generic[I, O, L]):
             QueuedImageLoggingCallback("image_worst", queue_size=Q, modes=[Mode.VAL, Mode.TEST]),
             QueuedImageLoggingCallback("image_worst", queue_size=Q, modes=[Mode.TRAIN], flush_interval=1000),
             QueuedImageLoggingCallback("image_best", queue_size=Q, modes=[Mode.VAL, Mode.TEST], negate_priority=True),
-            QueuedImageLoggingCallback("image_best", queue_size=Q, modes=[Mode.TRAIN], flush_interval=1000, negate_priority=True),
+            QueuedImageLoggingCallback(
+                "image_best", queue_size=Q, modes=[Mode.TRAIN], flush_interval=1000, negate_priority=True
+            ),
             ErrorAtUncertaintyCallback("uncert", modes=[Mode.VAL, Mode.TRAIN, Mode.TEST]),
-            ConfusionMatrixCallback("conf_mat", modes=[Mode.VAL, Mode.TEST], num_classes=self.num_classes)
+            ConfusionMatrixCallback("conf_mat", modes=[Mode.VAL, Mode.TEST], num_classes=self.num_classes),
         ]
 
     def log_loss(self, loss: L) -> None:
@@ -111,10 +112,7 @@ class BaseModel(pl.LightningModule, Generic[I, O, L]):
 
     def training_step(self, example: I, batch_idx: int, *args):
         pred, loss = self.step(example, batch_idx)
-        return {
-            "pred": pred.detach(),
-            "loss": loss.total_loss
-        }
+        return {"pred": pred.detach(), "loss": loss.total_loss}
 
     def validation_step(self, example: I, batch_idx: int, *args):
         pred, loss = self.step(example, batch_idx)
@@ -193,9 +191,7 @@ class BaseModel(pl.LightningModule, Generic[I, O, L]):
         if isinstance(example, Example):
             return cast(I, example)
         elif self.example_type is MISSING:
-            raise AttributeError(
-                f"Please specify the classvar `example_type` to enable autocasting of inputs"
-            )
+            raise AttributeError("Please specify the classvar `example_type` to enable autocasting of inputs")
 
         try:
             return cast(I, self.example_type.create(*example))
@@ -216,7 +212,7 @@ class BaseModel(pl.LightningModule, Generic[I, O, L]):
         self.logger.experiment.log(target, commit=False)
 
     def get_dataset_name(self, mode: Mode, dataloader_idx: Optional[int] = None) -> Optional[str]:
-        if not hasattr(self.trainer, "datamodule"): 
+        if not hasattr(self.trainer, "datamodule"):
             return None
         elif isinstance((dm := self.trainer.datamodule), NamedDataModuleMixin):
             return dm.get_name(mode, dataloader_idx)
@@ -226,7 +222,7 @@ class BaseModel(pl.LightningModule, Generic[I, O, L]):
             return self.trainer.datamodule.__class__.__name__
 
     def dataset_names(self, mode: Mode) -> Iterator[str]:
-        if not hasattr(self.trainer, "datamodule"): 
+        if not hasattr(self.trainer, "datamodule"):
             return
         elif isinstance((dm := self.trainer.datamodule), NamedDataModuleMixin):
             for name in dm.names_for_mode(mode):
@@ -239,10 +235,10 @@ class BaseModel(pl.LightningModule, Generic[I, O, L]):
     def _log_loss(self, name: str, loss: Tensor):
         if self.state.mode == Mode.TRAIN:
             self.log(
-                name, 
-                loss, 
-                on_step=True, 
-                on_epoch=False, 
+                name,
+                loss,
+                on_step=True,
+                on_epoch=False,
                 add_dataloader_idx=False,
                 batch_size=self._batch_size,
             )
@@ -278,8 +274,10 @@ class BaseModel(pl.LightningModule, Generic[I, O, L]):
         """
         # TODO provide a way to unpatch the logger (probably needed for test/inference)
         log = logger.experiment.log
+
         def wrapped_log(*args, **kwargs):
             f = partial(log, commit=False, step=self.global_step)
             return f(*args, **kwargs)
+
         logger.experiment.log == wrapped_log
         return logger

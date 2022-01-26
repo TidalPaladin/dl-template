@@ -1,27 +1,25 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+from abc import ABC, abstractmethod, abstractproperty
+from copy import deepcopy
+from dataclasses import dataclass, field
+from queue import PriorityQueue
+from typing import Dict, Generic, List, Optional, Sequence, Set, Tuple, TypeVar, Union, cast
+
+import pytorch_lightning as pl
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from torch.optim import AdamW
-from enum import Enum
-from abc import abstractmethod, abstractproperty, ABC
-from ..structs import Example, Prediction, Mode, I, O, L, Loss, State
-from typing import TypeVar, Generic, Any, Type, ClassVar, cast, Hashable, Dict, Sequence, Optional, Set, Tuple, Iterator, Union, List
-import pytorch_lightning as pl
-from functools import wraps
-from combustion.util import MISSING
-from torchmetrics import MetricCollection
-from queue import PriorityQueue
-from dataclasses import dataclass, field
 import torchmetrics as tm
-from copy import deepcopy
+from torchmetrics import MetricCollection
+
+from ..structs import Mode, State
 
 
 T = TypeVar("T", bound="StateCollection")
 P = TypeVar("P")
 M = TypeVar("M", bound="nn.Module")
 U = TypeVar("U")
+
 
 class StateCollection(ABC, Generic[U]):
     r"""Container for storing objects that are associated with a given :class:`State`."""
@@ -33,7 +31,7 @@ class StateCollection(ABC, Generic[U]):
 
     @abstractmethod
     def reset(
-        self: T, 
+        self: T,
         specific_states: Sequence[State] = [],
         specific_modes: Sequence[Mode] = [],
     ) -> T:
@@ -89,7 +87,7 @@ class StateCollection(ABC, Generic[U]):
 
 
 class ModuleStateCollection(nn.ModuleDict, StateCollection[M]):
-    r"""Container for storing :class:`nn.Module` instances that are associated with a given 
+    r"""Container for storing :class:`nn.Module` instances that are associated with a given
     :class:`State`. Inherits from :class:`nn.ModuleDict` to support stateful attachment of
     contained :class:`nn.Module` instances.
     """
@@ -137,24 +135,21 @@ class ModuleStateCollection(nn.ModuleDict, StateCollection[M]):
 
 
 def join_collections(col1: MetricCollection, col2: MetricCollection) -> MetricCollection:
-    full_dict = {
-        name: metric
-        for col in (col1, col2)
-        for name, metric in col.items()
-    }
+    full_dict = {name: metric for col in (col1, col2) for name, metric in col.items()}
     full_dict = cast(Dict[str, tm.Metric], full_dict)
     return MetricCollection(full_dict)
 
 
-class MetricStateCollection(ModuleStateCollection[MetricCollection]) :
+class MetricStateCollection(ModuleStateCollection[MetricCollection]):
     r"""Container for storing multiple :class:`MetricCollections`, with each collection being
-    associated with a given :class:`State` (mode, dataset pair). 
+    associated with a given :class:`State` (mode, dataset pair).
 
     Args:
         collection:
             The base :class:`MetricCollection` to attach when registering a state. If not provided,
             please use :func:`set_state` to assign a collection
     """
+
     def __init__(self, collection: Optional[MetricCollection] = None):
         super().__init__()
         self._collection = collection
@@ -178,8 +173,8 @@ class MetricStateCollection(ModuleStateCollection[MetricCollection]) :
 
     @torch.no_grad()
     def log(
-        self, 
-        state: State, 
+        self,
+        state: State,
         pl_module: pl.LightningModule,
         on_step: bool = False,
         on_epoch: bool = True,
@@ -192,19 +187,20 @@ class MetricStateCollection(ModuleStateCollection[MetricCollection]) :
         prefix = collection.prefix
 
         for name, metric in collection.items():
-            metric_attribute=f"{attr}.{prefix}.{name}"
+            metric = cast(tm.Metric, metric)
+            metric_attribute = f"{attr}.{prefix}.{name}"
             pl_module.log(
                 name,
                 metric,
-                on_step=on_step, 
-                on_epoch=on_epoch, 
+                on_step=on_step,
+                on_epoch=on_epoch,
                 add_dataloader_idx=False,  # type: ignore
-                rank_zero_only=True, # type: ignore
-                metric_attribute=metric_attribute, # type: ignore
+                rank_zero_only=True,  # type: ignore
+                metric_attribute=metric_attribute,  # type: ignore
             )
 
     def reset(
-        self: T, 
+        self: T,
         specific_states: Sequence[State] = [],
         specific_modes: Sequence[Mode] = [],
     ) -> T:
@@ -254,7 +250,7 @@ class PrioritizedItem(Generic[P]):
 
 class QueueStateCollection(StateCollection[PriorityQueue[PrioritizedItem[P]]]):
     r"""Collection that associates each State with a PriorityQueue."""
-    QueueType = PriorityQueue[PrioritizedItem[P]]
+    QueueType = PriorityQueue[PrioritizedItem]
     _lookup: Dict[State, QueueType]
 
     def __init__(self):
@@ -305,7 +301,7 @@ class QueueStateCollection(StateCollection[PriorityQueue[PrioritizedItem[P]]]):
         return sum(self.qsize(state) for state in self.states)
 
     def reset(
-        self: T, 
+        self: T,
         specific_states: Sequence[State] = [],
         specific_modes: Sequence[Mode] = [],
     ) -> T:

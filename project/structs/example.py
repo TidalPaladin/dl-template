@@ -1,16 +1,21 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from dataclasses import dataclass
+from typing import Iterable, Optional, Tuple, Type, TypeVar
+
 import torch
 import torch.nn.functional as F
 from torch import Tensor
-from dataclasses import dataclass
-from typing import Iterable, TypeVar, Type, Optional, Tuple
-from combustion.util.dataclasses import TensorDataclass, BatchMixin
+
 from combustion.util import MISSING
+from combustion.util.dataclasses import BatchMixin, TensorDataclass
+
 from .helpers import ResizeMixin
 
+
 I = TypeVar("I", bound="Example")
+
 
 @dataclass(repr=False)
 class Example(TensorDataclass, BatchMixin, ResizeMixin):
@@ -30,9 +35,9 @@ class Example(TensorDataclass, BatchMixin, ResizeMixin):
                 raise ValueError(f"Unexpected shape {self.label.shape} for `label`")
 
     def __eq__(self, other: "Example") -> bool:
-        img_match = torch.allclose(self.img, other.img) 
+        img_match = torch.allclose(self.img, other.img)
         if self.has_label and other.has_label:
-            label_match = torch.allclose(self.label, other.label) # type: ignore
+            label_match = torch.allclose(self.label, other.label)  # type: ignore
         elif not self.has_label and not other.has_label:
             label_match = True
         else:
@@ -48,7 +53,7 @@ class Example(TensorDataclass, BatchMixin, ResizeMixin):
         return self.img.ndim == 4
 
     @classmethod
-    def from_unbatched(cls: Type[I], examples: Iterable[I]) -> I: 
+    def from_unbatched(cls: Type[I], examples: Iterable[I]) -> I:
         assert not any(ex.is_batched for ex in examples)
         img = torch.stack([ex.img for ex in examples], dim=0)
 
@@ -56,7 +61,7 @@ class Example(TensorDataclass, BatchMixin, ResizeMixin):
         assert len(has_label) == 1, "Cannot combine examples with/without labels"
 
         if all(ex.has_label for ex in examples):
-            label = torch.stack([ex.label for ex in examples], dim=0) # type: ignore
+            label = torch.stack([ex.label for ex in examples], dim=0)  # type: ignore
         elif not any(ex.has_label for ex in examples):
             label = None
         else:
@@ -76,7 +81,7 @@ class Example(TensorDataclass, BatchMixin, ResizeMixin):
 
     @classmethod
     def create(cls: Type[I], *args, **kwargs) -> I:
-        r"""Creation method that supports passthrough when the only arg is 
+        r"""Creation method that supports passthrough when the only arg is
         an :class:`Example` instance.
         """
         if len(args) == 1 and not kwargs and isinstance(args[0], cls):
@@ -84,22 +89,22 @@ class Example(TensorDataclass, BatchMixin, ResizeMixin):
         return cls(*args, **kwargs)
 
     def resize(
-        self: I, 
-        scale_factor: float, 
-        mode: str = "bilinear", 
-        align_corners=None, 
+        self: I,
+        scale_factor: float,
+        mode: str = "bilinear",
+        align_corners=None,
         recompute_scale_factor: bool = False,
-        **kwargs
+        **kwargs,
     ) -> I:
         orig_img = self.img
         img = self._view_for_resize(orig_img)
         img = F.interpolate(
-            img, 
-            scale_factor=scale_factor, 
-            mode=mode, 
-            align_corners=align_corners, 
-            recompute_scale_factor=recompute_scale_factor, # type: ignore
-            **kwargs
+            img,
+            scale_factor=scale_factor,
+            mode=mode,
+            align_corners=align_corners,
+            recompute_scale_factor=recompute_scale_factor,  # type: ignore
+            **kwargs,
         )
         img = self._view_as_orig(img, orig_img)
         assert img.ndim == orig_img.ndim

@@ -1,20 +1,16 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import torch
-from torch import Tensor
-from dataclasses import dataclass
-from typing import Iterable, TypeVar, Type, Optional
-from combustion.util.dataclasses import TensorDataclass, BatchMixin
-from combustion.util import MISSING
-from typing import Generic, Union, TypeVar, Tuple, cast
 from abc import abstractmethod
+from typing import Tuple, TypeVar
+
+from torch import Tensor
 
 
 T = TypeVar("T", bound="ResizeMixin")
 
-class ResizeMixin:
 
+class ResizeMixin:
     @abstractmethod
     def resize(self: T, scale_factor: float, **kwargs) -> T:
         ...
@@ -28,7 +24,7 @@ class ResizeMixin:
         return self.resize(scale, **kwargs) if scale < 1.0 else self
 
     def _compute_scale(
-        self, 
+        self,
         size: Tuple[int, int],
         max_size: Tuple[int, int],
     ) -> float:

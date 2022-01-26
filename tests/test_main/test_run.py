@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import pytest
 import runpy
 import sys
+
+import pytest
 
 
 @pytest.mark.skip

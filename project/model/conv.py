@@ -2,18 +2,12 @@
 # -*- coding: utf-8 -*-
 
 import torch.nn as nn
-from torch.optim import AdamW
-from torch.optim.lr_scheduler import OneCycleLR
-from enum import Enum
-from abc import abstractmethod, abstractproperty
-from ..structs import Example, Prediction, Mode, Loss, MultiClassPrediction
-from typing import TypeVar, Generic
-import pytorch_lightning as pl
+
+from ..structs import Example, Loss, MultiClassPrediction, Prediction
 from .base import BaseModel
 
 
 class ConvModel(BaseModel[Example, Prediction, Loss]):
-
     def __init__(self, lr: float = 1e-3, weight_decay: float = 0):
         super().__init__(lr, weight_decay)
         self.num_classes = 10
@@ -32,11 +26,7 @@ class ConvModel(BaseModel[Example, Prediction, Loss]):
             nn.ReLU(),
         )
 
-        self.head = nn.Sequential(
-            nn.AdaptiveAvgPool2d((1, 1)),
-            nn.Conv2d(64, self.num_classes, 1)
-        )
-
+        self.head = nn.Sequential(nn.AdaptiveAvgPool2d((1, 1)), nn.Conv2d(64, self.num_classes, 1))
 
     def forward(self, example: Example) -> Prediction:
         img = example.img

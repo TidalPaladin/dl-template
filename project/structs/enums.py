@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from enum import Enum
 from dataclasses import dataclass, field, replace
+from enum import Enum
 from typing import Optional, Set
+
 
 class Mode(Enum):
     TRAIN = 0

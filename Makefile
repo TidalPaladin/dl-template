@@ -53,7 +53,7 @@ init:
 node_modules:
 	npm install
 
-quality: $(VENV)/bin/activate-quality
+quality: $(VENV)/bin/requirements.quality.txt
 	$(MAKE) clean
 	$(PYTHON) -m black --check --line-length $(LINE_LEN) --target-version $(PY_VER_SHORT) $(QUALITY_DIRS)
 	$(PYTHON) -m flake8 --max-doc-length $(DOC_LEN) --max-line-length $(LINE_LEN) $(QUALITY_DIRS) 
@@ -66,7 +66,7 @@ reset:
 run: $(CONFIG_FILE)
 	$(PYTHON) -m $(PROJECT)
 
-style: $(VENV)/bin/activate-quality
+style: $(VENV)/bin/requirements.quality.txt
 	$(PYTHON) -m autoflake -r -i --remove-all-unused-imports --remove-unused-variables $(QUALITY_DIRS)
 	$(PYTHON) -m isort $(QUALITY_DIRS)
 	$(PYTHON) -m autopep8 -a -r -i --max-line-length=$(LINE_LEN) $(QUALITY_DIRS)

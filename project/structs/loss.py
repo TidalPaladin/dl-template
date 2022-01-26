@@ -3,13 +3,16 @@
 
 
 from abc import abstractproperty
-from torch import Tensor 
 from dataclasses import dataclass
-from combustion.util.dataclasses import TensorDataclass, BatchMixin
+from typing import TypeVar
 
-from typing import Iterable, TypeVar
+from torch import Tensor
+
+from combustion.util.dataclasses import BatchMixin, TensorDataclass
+
 
 L = TypeVar("L", bound="Loss")
+
 
 @dataclass
 class Loss(TensorDataclass, BatchMixin):
