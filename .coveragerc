@@ -4,9 +4,11 @@ exclude_lines =
     pragma: no cover
     raise NotImplementedError
     if __name__ == .__main__.:
+    \.\.\.
 ignore_errors = True
 omit =
     tests/*
+    */version.py
 
 [xml]
 output=coverage.xml
