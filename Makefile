@@ -88,6 +88,7 @@ test-ci: $(VENV)/bin/requirements.dev.txt ## runs CI-only tests
 	$(PYTHON) -m pytest \
 		--cov=./$(PROJECT) \
 		--cov-report=xml \
+		--cov-report=term \
 		-s -v \
 		-m "not ci_skip" \
 		./tests/

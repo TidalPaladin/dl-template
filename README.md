@@ -1,5 +1,9 @@
 # DL-Template
 
+[![CircleCI](https://circleci.com/gh/TidalPaladin/dl-template/tree/master.svg?style=svg)](https://circleci.com/gh/TidalPaladin/dl-template/tree/master)
+[![codecov](https://codecov.io/gh/TidalPaladin/dl-template/branch/master/graph/badge.svg?token=7NKPQWZXDF)](https://codecov.io/gh/TidalPaladin/dl-template)
+
+
 A template repository for deep learning using PyTorch. The core objective of this
 template is to minimize the latency between idea and implementation. Once a foundational model
 has been built, iterating on that model should be a fast and easy process. 

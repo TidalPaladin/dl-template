@@ -3,7 +3,7 @@
 
 from abc import abstractmethod
 from functools import partial
-from typing import Any, ClassVar, Dict, Generic, Iterable, Iterator, Optional, Tuple, cast
+from typing import Any, ClassVar, Dict, Generic, Iterable, Iterator, Optional, Tuple, Type, cast
 
 import matplotlib.pyplot as plt
 import pytorch_lightning as pl
@@ -27,7 +27,7 @@ from ..structs import Example, I, L, Loss, Mode, O, Prediction, State
 class BaseModel(pl.LightningModule, Generic[I, O, L]):
     r"""Base class for all models."""
     state: State
-    example_type: ClassVar[Example] = Example
+    example_type: ClassVar[Type[Example]] = Example
     logger: LightningLoggerBase
 
     def __init__(self, lr: float = 1e-3, weight_decay: float = 0, num_classes: int = 10):
@@ -213,14 +213,11 @@ class BaseModel(pl.LightningModule, Generic[I, O, L]):
         self.logger.experiment.log(target, commit=False)
 
     def get_dataset_name(self, mode: Mode, dataloader_idx: Optional[int] = None) -> Optional[str]:
-        if not hasattr(self.trainer, "datamodule"):
-            return None
-        elif isinstance((dm := self.trainer.datamodule), NamedDataModuleMixin):
-            return dm.get_name(mode, dataloader_idx)
-        elif hasattr(dm, "name"):
-            return self.trainer.datamodule.name
+        names = list(self.dataset_names(mode))
+        if dataloader_idx is None:
+            return names[0] if names else None
         else:
-            return self.trainer.datamodule.__class__.__name__
+            return names[dataloader_idx]
 
     def dataset_names(self, mode: Mode) -> Iterator[str]:
         if not hasattr(self.trainer, "datamodule"):
@@ -228,7 +225,7 @@ class BaseModel(pl.LightningModule, Generic[I, O, L]):
         elif isinstance((dm := self.trainer.datamodule), NamedDataModuleMixin):
             for name in dm.names_for_mode(mode):
                 yield name
-        elif hasattr(dm, "name"):
+        elif hasattr(dm, "name") and dm.name != ...:
             yield self.trainer.datamodule.name
         else:
             yield self.trainer.datamodule.__class__.__name__
