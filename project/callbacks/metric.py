@@ -34,6 +34,8 @@ class ErrorAtUncertaintyTarget(MetricLoggingTarget):
     ) -> None:
         collection_out = self.metric.compute()
         entropy, err, has_items = next(iter(collection_out.values()))
+        entropy = entropy[has_items]
+        err = err[has_items]
         return self._log(pl_module, tag, entropy, err)
 
     @rank_zero_only
