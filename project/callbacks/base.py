@@ -420,6 +420,7 @@ class MetricLoggingTarget(LoggingTarget[I, O]):
         return cls(metric)
 
 
+# NOTE: metric.reset() must be explicitly called for Callback metrics
 class MetricLoggingCallback(LoggingCallback, Generic[I, O]):
     target_cls: MetricLoggingTarget
 
@@ -466,6 +467,7 @@ class MetricLoggingCallback(LoggingCallback, Generic[I, O]):
         if self.log_on_step:
             tag = state.with_postfix(self.name)
             target.log(pl_module, tag, trainer.global_step)
+            collection.reset()
 
     def on_train_epoch_end(self, *args, **kwargs):
         self._on_epoch_end(*args, **kwargs, mode=Mode.TRAIN)
@@ -488,3 +490,4 @@ class MetricLoggingCallback(LoggingCallback, Generic[I, O]):
             if state.mode == mode:
                 target = self.target_cls(metric)  # type: ignore
                 target.log(pl_module, tag, step)
+                metric.reset()
