@@ -2,10 +2,11 @@
 # -*- coding: utf-8 -*-
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, ForwardRef, Iterable, TypeVar
+from typing import TYPE_CHECKING, ForwardRef, Iterable, TypeVar, Union
 
 import wandb
 from pytorch_lightning.utilities import rank_zero_only
+from pytorch_lightning.utilities.cli import CALLBACK_REGISTRY
 from torch import Tensor
 from torchmetrics import MetricCollection
 
@@ -41,11 +42,19 @@ class ErrorAtUncertaintyTarget(MetricLoggingTarget):
     @rank_zero_only
     def _log(self, pl_module: BaseModel, tag: str, entropy: Tensor, err: Tensor) -> None:
         fig = ErrorAtUncertainty.plot(entropy, err)
-        pl_module.wrapped_log({tag: wandb.Image(fig)})
+        if not pl_module.state.sanity_checking:
+            pl_module.wrapped_log({tag: wandb.Image(fig)})
 
 
+@CALLBACK_REGISTRY
 class ErrorAtUncertaintyCallback(MetricLoggingCallback):
-    def __init__(self, name: str, modes: Iterable[Mode], log_on_step: bool = False, **kwargs):
+    def __init__(
+        self,
+        name: str,
+        modes: Iterable[Union[str, Mode]],
+        log_on_step: bool = False,
+        **kwargs,
+    ):
         kwargs["from_logits"] = True
         kwargs.setdefault("num_bins", 10)
         metric = MetricCollection({name: ErrorAtUncertainty(**kwargs)})
@@ -72,16 +81,19 @@ class ConfusionMatrixTarget(MetricLoggingTarget):
         mat: Tensor,
     ) -> None:
         fig = ConfusionMatrix.plot(mat)
-        pl_module.wrapped_log({tag: wandb.Image(fig)})
+        if not pl_module.state.sanity_checking:
+            pl_module.wrapped_log({tag: wandb.Image(fig)})
 
 
+@CALLBACK_REGISTRY
 class ConfusionMatrixCallback(MetricLoggingCallback):
     def __init__(
         self,
         name: str,
-        modes: Iterable[Mode],
+        modes: Iterable[Union[str, Mode]],
+        num_classes: int,
         log_on_step: bool = False,
         **kwargs,
     ):
-        metric = MetricCollection({name: ConfusionMatrix(**kwargs)})
+        metric = MetricCollection({name: ConfusionMatrix(num_classes, **kwargs)})
         super().__init__(name, modes, metric, ConfusionMatrixTarget, log_on_step)

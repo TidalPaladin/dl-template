@@ -3,22 +3,20 @@
 
 from abc import abstractmethod
 from functools import partial
-from typing import Any, ClassVar, Dict, Generic, Iterable, Iterator, Optional, Tuple, Type, cast
+from typing import Any, ClassVar, Dict, Generic, Iterator, Optional, Tuple, Type, cast
 
 import matplotlib.pyplot as plt
 import pytorch_lightning as pl
 import torch.nn.functional as F
-from pytorch_lightning.callbacks import Callback, LearningRateMonitor
 from pytorch_lightning.loggers import LightningLoggerBase, WandbLogger
 from pytorch_lightning.utilities import rank_zero_only
+from pytorch_lightning.utilities.cli import instantiate_class
 from torch import Tensor
-from torch.optim import AdamW
 from torch.optim.lr_scheduler import OneCycleLR  # type: ignore
 from torchmetrics import MetricCollection
 
 from combustion.util import MISSING
 
-from ..callbacks import ConfusionMatrixCallback, ErrorAtUncertaintyCallback, QueuedImageLoggingCallback
 from ..data import NamedDataModuleMixin
 from ..metrics import UCE, Accuracy, Entropy, MetricStateCollection
 from ..structs import Example, I, L, Loss, Mode, O, Prediction, State
@@ -30,14 +28,23 @@ class BaseModel(pl.LightningModule, Generic[I, O, L]):
     example_type: ClassVar[Type[Example]] = Example
     logger: LightningLoggerBase
 
-    def __init__(self, lr: float = 1e-3, weight_decay: float = 0, num_classes: int = 10):
+    def __init__(
+        self,
+        num_classes: int = 10,
+        optimizer_init: dict = {},
+        lr_scheduler_init: dict = {},
+        lr_scheduler_interval: str = "epoch",
+        lr_scheduler_monitor: str = "train/total_loss_epoch",
+    ):
         super().__init__()
-        self.lr = lr
-        self.weight_decay = weight_decay
         self.state = State()
         self._batch_size = 4
         self.num_classes = num_classes
         self.state_metrics = MetricStateCollection()
+        self.optimizer_init = optimizer_init
+        self.lr_scheduler_init = lr_scheduler_init
+        self.lr_scheduler_interval = lr_scheduler_interval
+        self.lr_scheduler_monitor = lr_scheduler_monitor
 
     @abstractmethod
     def forward(self, example: I) -> O:
@@ -52,43 +59,33 @@ class BaseModel(pl.LightningModule, Generic[I, O, L]):
         metrics = {
             "accuracy": Accuracy(),
             "entropy": Entropy(),
-            "uce": UCE(num_bins=10, num_classes=10, from_logits=True),
+            "uce": UCE(num_bins=10, num_classes=self.num_classes, from_logits=True),
         }
         return MetricCollection(metrics, prefix=state.prefix).to(self.device)
-
-    def get_callbacks(self) -> Iterable[Callback]:
-        Q = 8
-        return [
-            LearningRateMonitor(),
-            QueuedImageLoggingCallback("image_worst", queue_size=Q, modes=[Mode.VAL, Mode.TEST]),
-            QueuedImageLoggingCallback("image_worst", queue_size=Q, modes=[Mode.TRAIN], flush_interval=1000),
-            QueuedImageLoggingCallback("image_best", queue_size=Q, modes=[Mode.VAL, Mode.TEST], negate_priority=True),
-            QueuedImageLoggingCallback(
-                "image_best", queue_size=Q, modes=[Mode.TRAIN], flush_interval=1000, negate_priority=True
-            ),
-            ErrorAtUncertaintyCallback("uncert", modes=[Mode.VAL, Mode.TRAIN, Mode.TEST]),
-            ConfusionMatrixCallback("conf_mat", modes=[Mode.VAL, Mode.TEST], num_classes=self.num_classes),
-        ]
 
     def log_loss(self, loss: L) -> None:
         name = self.state.with_postfix("total_loss")
         self._log_loss(name, loss.total_loss)
 
-    def configure_optimizers(self):
-        opt = AdamW(self.parameters(), self.lr, weight_decay=self.weight_decay)
-        scheduler = OneCycleLR(
-            opt,
-            self.lr,
-            total_steps=self.trainer.max_steps,
-            pct_start=0.3,
-            div_factor=1,
-            final_div_factor=20,
-        )
-        schedule_dict = {"scheduler": scheduler, "interval": "step", "name": "train/lr"}
-        return [opt], [schedule_dict]
+    def configure_optimizers(self) -> Dict[str, Any]:
+        assert self.optimizer_init
+        result: Dict[str, Any] = {}
+        optimizer = instantiate_class(self.parameters(), self.optimizer_init)
+        result["optimizer"] = optimizer
+
+        if self.lr_scheduler_init:
+            lr_scheduler: Dict[str, Any] = {}
+            scheduler = instantiate_class(optimizer, self.lr_scheduler_init)
+            lr_scheduler["scheduler"] = scheduler
+            lr_scheduler["monitor"] = self.lr_scheduler_monitor
+            lr_scheduler["interval"] = self.lr_scheduler_interval
+            result["lr_scheduler"] = lr_scheduler
+
+        return result
 
     def compute_loss(self, example: I, pred: O) -> L:
         assert example.label is not None
+        example.label
         loss = Loss(F.cross_entropy(pred.logits, example.label))
         return cast(L, loss)
 
@@ -157,6 +154,8 @@ class BaseModel(pl.LightningModule, Generic[I, O, L]):
         # TODO: this doesn't print for some reason
         self.print("Metrics:")
         self.print(self.state_metrics.summarize())
+        if isinstance(self.logger, WandbLogger):
+            self.patch_logger(self.logger)
 
     def on_test_start(self):
         r"""Initialize testing metrics"""
@@ -201,8 +200,10 @@ class BaseModel(pl.LightningModule, Generic[I, O, L]):
 
     def commit_logs(self, step: int = None) -> None:
         if isinstance(self.logger, WandbLogger):
+            assert self.global_step >= self.logger.experiment.step
+
             # final log call with commit=True to flush results
-            self.logger.experiment.log({}, commit=True, step=step)
+            self.logger.experiment.log.log({}, commit=True, step=self.global_step)
         # ensure all pyplot plots are closed
         plt.close()
 
@@ -274,8 +275,15 @@ class BaseModel(pl.LightningModule, Generic[I, O, L]):
         log = logger.experiment.log
 
         def wrapped_log(*args, **kwargs):
-            f = partial(log, commit=False, step=self.global_step)
+            assert self.global_step >= self.logger.experiment.step
+            f = partial(log, commit=False)
+            kwargs.pop("commit", None)
             return f(*args, **kwargs)
 
-        logger.experiment.log == wrapped_log
+        # attach the original log method as an attribute of the wrapper
+        # this allows commiting logs with logger.experiment.log.log(..., commit=True)
+        wrapped_log.log = log
+
+        # apply the patch
+        logger.experiment.log = wrapped_log
         return logger

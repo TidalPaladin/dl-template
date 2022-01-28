@@ -140,3 +140,4 @@ coverage.xml
 
 src/combustion/version.py
 /data/
+/outputs
