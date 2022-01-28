@@ -17,7 +17,7 @@ class TestQueuedImageLoggingCallback:
     @pytest.mark.parametrize(
         "label,score,exp",
         [
-            pytest.param(None, 0.5, 0.0),
+            pytest.param(None, 0.5, None),
             pytest.param(1.0, 0.0, 1.0),
             pytest.param(0.0, 1.0, 1.0),
             pytest.param(0.0, 0.0, 0.0),
@@ -32,12 +32,15 @@ class TestQueuedImageLoggingCallback:
         example = Example(img=torch.rand(3, 32, 32), label=torch.tensor(label).view(1) if label is not None else None)
         pred = BinaryPrediction(logits=logit.view(1))
         priority = QueuedImageLoggingCallback.get_priority(example, pred)
-        assert abs(priority - exp) <= eps
+        if exp is None:
+            assert priority is None
+        else:
+            assert abs(priority - exp) <= eps
 
     @pytest.mark.parametrize(
         "label,logits,exp",
         [
-            pytest.param(None, (0, 0), 0.0),
+            pytest.param(None, (0, 0), None),
             pytest.param(0, (0.0, 0.0), 0.5),
             pytest.param(1, (0.0, 0.0), 0.5),
             pytest.param(0, (-1.0, 1.0), 1 - 0.1192029),  # probs -> (0.1192029, 0.8807971)
@@ -48,7 +51,10 @@ class TestQueuedImageLoggingCallback:
         example = Example(img=torch.rand(3, 32, 32), label=torch.tensor(label).view(1) if label is not None else None)
         pred = MultiClassPrediction(logits=torch.tensor(logits))
         priority = QueuedImageLoggingCallback.get_priority(example, pred)
-        assert abs(priority - exp) <= 1e-4
+        if exp is None:
+            assert priority is None
+        else:
+            assert abs(priority - exp) <= 1e-4
 
     def test_get_priority_exception_on_batched(self):
         example = Example(
@@ -126,6 +132,23 @@ class TestQueuedImageLoggingCallback:
 
         out = torch.tensor(queued_priorities).sort(descending=True).values
         assert torch.allclose(out, keep_keys)
+
+    def test_enqueue_null_priority(self):
+        example = Example(
+            img=torch.rand(3, 32, 32),
+            label=None,
+        )
+        logit = torch.rand(1)
+        pred = BinaryPrediction(logit)
+
+        cb = QueuedImageLoggingCallback("img", queue_size=8)
+        state = State(Mode.TEST)
+        cb.register(state)
+        queue = cb.queues.get_state(state)
+
+        assert cb.get_priority(example, pred) is None
+        cb.enqueue(example, pred, queue=queue)
+        assert queue.empty()
 
     def test_dequeue(self):
         eps = 1e-8

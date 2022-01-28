@@ -187,10 +187,11 @@ class QueuedLoggingCallback(LoggingCallback, Generic[I, O]):
         self.negate_priority = negate_priority
 
     @abstractclassmethod
-    def get_priority(cls, example: I, pred: O) -> Union[int, float]:
+    def get_priority(cls, example: I, pred: O) -> Optional[Union[int, float]]:
         r"""Compute a priority for an example/prediction pair. When logging with a finite
         sized priority queue, only the ``len(queue)`` highest priority images will be logged.
         Typically priority would be assigned based on some metric (loss, entropy, error, etc.).
+        If ``None`` is returned, assume the item should not be queued.
         """
         ...
 
@@ -342,6 +343,8 @@ class QueuedLoggingCallback(LoggingCallback, Generic[I, O]):
 
         # possibly enqueue item, depending on queue capacity and priority
         priority = self.get_priority(example, pred)
+        if priority is None:
+            return False
         priority = priority if not self.negate_priority else -1 * priority
         item = PrioritizedItem(priority, (example, pred))
         if queue.full():
