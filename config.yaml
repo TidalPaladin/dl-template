@@ -1,0 +1,35 @@
+trainer:
+  gpus: [0]
+  precision: 16
+  min_steps: 40000
+  max_steps: 40000
+  check_val_every_n_epoch: 2
+
+  callbacks:
+    - class_path: project.callbacks.ConfusionMatrixCallback
+      init_args:
+        name: "conf_mat"
+        modes: ["val", "test"]
+        num_classes: 10
+    - class_path: project.callbacks.ErrorAtUncertaintyCallback
+      init_args:
+        name: "uncert"
+        modes: ["train", "val", "test"]
+    - class_path: project.callbacks.QueuedImageLoggingCallback
+      init_args:
+        name: "image_worst"
+        queue_size: 32
+        modes: ["val", "test"]
+    - class_path: project.callbacks.QueuedImageLoggingCallback
+      init_args:
+        name: "image_best"
+        queue_size: 32
+        modes: ["val", "test"]
+        negate_priority: true
+    - class_path: project.callbacks.QueuedImageLoggingCallback
+      init_args:
+        name: "image"
+        queue_size: 32
+        modes: ["train"]
+        flush_interval: 1000
+    - class_path: pytorch_lightning.callbacks.LearningRateMonitor

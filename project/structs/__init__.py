@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from .enums import Mode, State
+from .enums import Mode, ModeGroup, State
 from .example import Example, I
 from .helpers import ResizeMixin
 from .loss import L, Loss
@@ -20,4 +20,5 @@ __all__ = [
     "BinaryPrediction",
     "MultiClassPrediction",
     "ResizeMixin",
+    "ModeGroup",
 ]

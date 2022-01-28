@@ -11,7 +11,6 @@ from typing import (
     Dict,
     ForwardRef,
     Generic,
-    Iterable,
     Iterator,
     List,
     Optional,
@@ -28,7 +27,7 @@ import torchmetrics as tm
 from pytorch_lightning.callbacks import Callback
 
 from ..metrics import MetricStateCollection, PrioritizedItem, QueueStateCollection
-from ..structs import Example, I, Mode, O, Prediction, State
+from ..structs import Example, I, Mode, ModeGroup, O, Prediction, State
 
 
 T = TypeVar("T", bound="LoggingTarget")
@@ -125,9 +124,9 @@ class LoggingCallback(Callback, Generic[I, O]):
             Size of the priority queue
     """
 
-    def __init__(self, name: str, modes: Iterable[Mode], target_cls: Type[LoggingTarget]):
+    def __init__(self, name: str, modes: ModeGroup, target_cls: Type[LoggingTarget]):
         super().__init__()
-        self.modes = tuple(modes)
+        self.modes = tuple(Mode.from_group(modes))
         self.name = name
         self.target_cls = target_cls
 
@@ -175,7 +174,7 @@ class QueuedLoggingCallback(LoggingCallback, Generic[I, O]):
     def __init__(
         self,
         name: str,
-        modes: Iterable[Mode],
+        modes: ModeGroup,
         queue_size: int,
         target_cls: Type[LoggingTarget],
         flush_interval: int = 0,
@@ -364,7 +363,7 @@ class QueuedLoggingCallback(LoggingCallback, Generic[I, O]):
 
 
 class IntervalLoggingCallback(LoggingCallback, Generic[I, O]):
-    def __init__(self, name: str, modes: Iterable[Mode], log_interval: int, target_cls: Type[LoggingTarget]):
+    def __init__(self, name: str, modes: ModeGroup, log_interval: int, target_cls: Type[LoggingTarget]):
         super().__init__(name, modes, target_cls)
         self.log_interval = log_interval
 
@@ -427,7 +426,7 @@ class MetricLoggingCallback(LoggingCallback, Generic[I, O]):
     def __init__(
         self,
         name: str,
-        modes: Iterable[Mode],
+        modes: ModeGroup,
         collection: tm.MetricCollection,
         target_cls: Type[MetricLoggingTarget],
         log_on_step: bool = False,

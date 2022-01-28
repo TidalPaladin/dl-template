@@ -45,14 +45,12 @@ class DummyDataModule(pl.LightningDataModule):
 def test_init_train(tmpdir, model: BaseModel):
     datamodule: pl.LightningDataModule = DummyDataModule(num_classes=10)
     logger = WandbLogger(project="test_init_train", save_dir=str(tmpdir), offline=True)
-    callbacks = model.get_callbacks()
 
     steps = 10000
     trainer = pl.Trainer(
         logger=logger,
         min_steps=steps,
         max_steps=steps,
-        callbacks=callbacks,
         default_root_dir=tmpdir,
         fast_dev_run=5,
         log_every_n_steps=2,

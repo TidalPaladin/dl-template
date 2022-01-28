@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, ForwardRef, Iterable, List, Optional, Tuple, T
 import torch
 import wandb
 from pytorch_lightning.utilities import rank_zero_only
+from pytorch_lightning.utilities.cli import CALLBACK_REGISTRY
 from torch import Tensor
 
 from ..metrics import QueueStateCollection
@@ -83,6 +84,7 @@ class WandBImageTarget(ImageTarget[I, O]):
 
 
 # TODO check if images from multiple GPUs end up in a single shared queue
+@CALLBACK_REGISTRY
 class QueuedImageLoggingCallback(QueuedLoggingCallback[I, O]):
     queues: QueueStateCollection
 
@@ -90,7 +92,7 @@ class QueuedImageLoggingCallback(QueuedLoggingCallback[I, O]):
         self,
         name: str,
         queue_size: int,
-        modes: Iterable[Mode] = [Mode.VAL, Mode.TEST],
+        modes: Iterable[Union[str, Mode]] = ["val", "test"],
         max_size: Optional[Tuple[int, int]] = None,
         target_cls: Type[ImageTarget] = WandBImageTarget,
         flush_interval: int = 0,

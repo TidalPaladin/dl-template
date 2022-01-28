@@ -3,7 +3,11 @@
 
 from dataclasses import dataclass, field, replace
 from enum import Enum
-from typing import Optional, Set
+from typing import Iterable, List, Optional, Set, Union
+
+
+# NOTE: LightingCLI won't accept this as a Callback param annotation
+ModeGroup = Iterable[Union["Mode", str]]
 
 
 class Mode(Enum):
@@ -19,6 +23,26 @@ class Mode(Enum):
     def __repr__(self) -> str:
         return self.name.lower()
 
+    @classmethod
+    def from_str(cls, val: str) -> "Mode":
+        val = val.strip().lower()
+        for mode in cls:
+            if mode.prefix == val:
+                return mode
+        raise ValueError(val)
+
+    @classmethod
+    def from_group(cls, group: ModeGroup) -> List["Mode"]:
+        result: List[Mode] = []
+        for item in group:
+            if isinstance(item, Mode):
+                result.append(item)
+            elif isinstance(item, str):
+                result.append(cls.from_str(item))
+            else:
+                raise TypeError(f"Expected Mode or str, found {type(item)}")
+        return result
+
 
 @dataclass(frozen=True)
 class State:
@@ -26,7 +50,15 @@ class State:
     dataset: Optional[str] = None
     sanity_checking: bool = False
 
-    _seen_datasets: Set[str] = field(default_factory=set, repr=False, hash=False, compare=False)
+    _seen_datasets: Set[str] = field(default_factory=set, repr=False)
+
+    def __eq__(self, other: "State") -> bool:
+        r"""Two states are equal if they have the same ``mode`` and ``dataset``"""
+        return self.mode == other.mode and self.dataset == other.dataset
+
+    def __hash__(self) -> int:
+        r"""State hash is based on ``mode`` and ``dataset``"""
+        return hash(self.mode) + hash(self.dataset)
 
     def update(self, mode: Mode, dataset: Optional[str]) -> "State":
         return self.set_mode(mode).set_dataset(dataset)

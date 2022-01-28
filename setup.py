@@ -20,6 +20,7 @@ requirements = [
     "torchmetrics",
     "wandb",
     "scikit-learn",
+    "jsonargparse[signatures]",
 ]
 
 
