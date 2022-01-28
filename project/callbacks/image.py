@@ -106,7 +106,7 @@ class QueuedImageLoggingCallback(QueuedLoggingCallback[I, O]):
 
     @classmethod
     @torch.no_grad()
-    def get_priority(cls, example: I, pred: O) -> Union[int, float]:
+    def get_priority(cls, example: I, pred: O) -> Optional[Union[int, float]]:
         r"""Compute a priority for an example/prediction pair. When logging with a finite
         sized priority queue, only the ``len(queue)`` highest priority images will be logged.
         Typically priority would be assigned based on some metric (loss, entropy, error, etc.).
@@ -117,7 +117,7 @@ class QueuedImageLoggingCallback(QueuedLoggingCallback[I, O]):
             raise ValueError("`pred` must be unbatched")
 
         if not example.has_label:
-            return 0
+            return None
         assert example.label is not None
 
         if isinstance(pred, BinaryPrediction):
