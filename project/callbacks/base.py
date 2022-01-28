@@ -249,7 +249,7 @@ class QueuedLoggingCallback(LoggingCallback, Generic[I, O]):
         # if a flush interval was specified, check if we need to flush
         # TODO should we use batch_idx for checking against flush_interval?
         step = trainer.global_step
-        if self.flush_interval and (step % self.flush_interval == 0):
+        if self.flush_interval and (step % self.flush_interval == 0) and step:
             self.flush_queues(pl_module, state.mode, step)
 
     def on_train_epoch_begin(self, *args, **kwargs):

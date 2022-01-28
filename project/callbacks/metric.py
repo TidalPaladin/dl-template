@@ -42,7 +42,8 @@ class ErrorAtUncertaintyTarget(MetricLoggingTarget):
     @rank_zero_only
     def _log(self, pl_module: BaseModel, tag: str, entropy: Tensor, err: Tensor) -> None:
         fig = ErrorAtUncertainty.plot(entropy, err)
-        pl_module.wrapped_log({tag: wandb.Image(fig)})
+        if not pl_module.state.sanity_checking:
+            pl_module.wrapped_log({tag: wandb.Image(fig)})
 
 
 @CALLBACK_REGISTRY
@@ -80,7 +81,8 @@ class ConfusionMatrixTarget(MetricLoggingTarget):
         mat: Tensor,
     ) -> None:
         fig = ConfusionMatrix.plot(mat)
-        pl_module.wrapped_log({tag: wandb.Image(fig)})
+        if not pl_module.state.sanity_checking:
+            pl_module.wrapped_log({tag: wandb.Image(fig)})
 
 
 @CALLBACK_REGISTRY

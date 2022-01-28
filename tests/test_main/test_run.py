@@ -1,19 +1,63 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import os
 import runpy
 import sys
+from pathlib import Path
 
 import pytest
 
-
-@pytest.mark.skip
-def test_fast_dev_run():
-    sys.argv = [sys.argv[0], "trainer=test"]
-    runpy.run_module("src.project", run_name="__main__", alter_sys=True)
+import project
 
 
-@pytest.mark.skip
-def test_dev_run():
-    sys.argv = [sys.argv[0], "trainer=test", "trainer.params.fast_dev_run=False"]
-    runpy.run_module("src.project", run_name="__main__", alter_sys=True)
+@pytest.fixture
+def project_root():
+    return Path(project.__file__).parents[1].absolute()
+
+
+@pytest.fixture
+def output_path(tmpdir):
+    os.environ["OUTPUT_PATH"] = str(tmpdir)
+    return str(tmpdir)
+
+
+def test_print_config():
+    sys.argv = [sys.argv[0], "fit", "--print_config"]
+    with pytest.raises(SystemExit):
+        runpy.run_module("project", run_name="__main__", alter_sys=True)
+
+
+def test_dummy_dataset(project_root, output_path):
+    config_file = Path(project_root, "config.yaml")
+    sys.argv = [
+        sys.argv[0],
+        "fit",
+        f"--config={config_file}",
+        "--data=project.data.DummyDataModule",
+        "--trainer.fast_dev_run=True",
+        "--trainer.gpus=null",
+        "--trainer.precision=32",
+    ]
+    runpy.run_module("project", run_name="__main__", alter_sys=True)
+
+
+@pytest.mark.ci_skip
+def test_cpu_dev_run(project_root, output_path):
+    config_file = Path(project_root, "config.yaml")
+    sys.argv = [
+        sys.argv[0],
+        "fit",
+        f"--config={config_file}",
+        "--trainer.fast_dev_run=True",
+        "--trainer.gpus=null",
+        "--trainer.precision=32",
+    ]
+    runpy.run_module("project", run_name="__main__", alter_sys=True)
+
+
+@pytest.mark.ci_skip
+def test_gpu_dev_run(project_root, output_path):
+    config_file = Path(project_root, "config.yaml")
+    sys.argv = [sys.argv[0], "fit", f"--config={config_file}", "--trainer.fast_dev_run=True"]
+    runpy.run_module("project", run_name="__main__", alter_sys=True)

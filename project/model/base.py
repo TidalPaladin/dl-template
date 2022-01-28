@@ -10,6 +10,7 @@ import pytorch_lightning as pl
 import torch.nn.functional as F
 from pytorch_lightning.loggers import LightningLoggerBase, WandbLogger
 from pytorch_lightning.utilities import rank_zero_only
+from pytorch_lightning.utilities.cli import instantiate_class
 from torch import Tensor
 from torch.optim.lr_scheduler import OneCycleLR  # type: ignore
 from torchmetrics import MetricCollection
@@ -27,12 +28,23 @@ class BaseModel(pl.LightningModule, Generic[I, O, L]):
     example_type: ClassVar[Type[Example]] = Example
     logger: LightningLoggerBase
 
-    def __init__(self, num_classes: int = 10):
+    def __init__(
+        self,
+        num_classes: int = 10,
+        optimizer_init: dict = {},
+        lr_scheduler_init: dict = {},
+        lr_scheduler_interval: str = "epoch",
+        lr_scheduler_monitor: str = "train/total_loss_epoch",
+    ):
         super().__init__()
         self.state = State()
         self._batch_size = 4
         self.num_classes = num_classes
         self.state_metrics = MetricStateCollection()
+        self.optimizer_init = optimizer_init
+        self.lr_scheduler_init = lr_scheduler_init
+        self.lr_scheduler_interval = lr_scheduler_interval
+        self.lr_scheduler_monitor = lr_scheduler_monitor
 
     @abstractmethod
     def forward(self, example: I) -> O:
@@ -47,7 +59,7 @@ class BaseModel(pl.LightningModule, Generic[I, O, L]):
         metrics = {
             "accuracy": Accuracy(),
             "entropy": Entropy(),
-            "uce": UCE(num_bins=10, num_classes=10, from_logits=True),
+            "uce": UCE(num_bins=10, num_classes=self.num_classes, from_logits=True),
         }
         return MetricCollection(metrics, prefix=state.prefix).to(self.device)
 
@@ -55,11 +67,25 @@ class BaseModel(pl.LightningModule, Generic[I, O, L]):
         name = self.state.with_postfix("total_loss")
         self._log_loss(name, loss.total_loss)
 
-    def configure_optimizers(self):
-        r"""Stub - provided by LightningCLI"""
+    def configure_optimizers(self) -> Dict[str, Any]:
+        assert self.optimizer_init
+        result: Dict[str, Any] = {}
+        optimizer = instantiate_class(self.parameters(), self.optimizer_init)
+        result["optimizer"] = optimizer
+
+        if self.lr_scheduler_init:
+            lr_scheduler: Dict[str, Any] = {}
+            scheduler = instantiate_class(optimizer, self.lr_scheduler_init)
+            lr_scheduler["scheduler"] = scheduler
+            lr_scheduler["monitor"] = self.lr_scheduler_monitor
+            lr_scheduler["interval"] = self.lr_scheduler_interval
+            result["lr_scheduler"] = lr_scheduler
+
+        return result
 
     def compute_loss(self, example: I, pred: O) -> L:
         assert example.label is not None
+        example.label
         loss = Loss(F.cross_entropy(pred.logits, example.label))
         return cast(L, loss)
 

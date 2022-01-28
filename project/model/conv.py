@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import torch
 import torch.nn as nn
 
 from ..structs import Example, Loss, MultiClassPrediction, Prediction
@@ -8,10 +9,26 @@ from .base import BaseModel
 
 
 class ConvModel(BaseModel[Example, Prediction, Loss]):
-    def __init__(self, width: int = 16):
-        super().__init__()
+    r"""Basic convolutional model"""
+    example_input_array = Example(img=torch.rand(1, 3, 32, 32))
+
+    def __init__(
+        self,
+        width: int = 16,
+        num_classes: int = 10,
+        optimizer_init: dict = {},
+        lr_scheduler_init: dict = {},
+        lr_scheduler_interval: str = "epoch",
+        lr_scheduler_monitor: str = "train/total_loss_epoch",
+    ):
+        super().__init__(
+            num_classes,
+            optimizer_init,
+            lr_scheduler_init,
+            lr_scheduler_interval,
+            lr_scheduler_monitor,
+        )
         self.save_hyperparameters()
-        self.num_classes = 10
 
         W = width
         self.tail = nn.Sequential(
