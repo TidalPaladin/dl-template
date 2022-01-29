@@ -27,7 +27,7 @@ class Example(TensorDataclass, BatchMixin, ResizeMixin):
 
     def __post_init__(self):
         if not 2 <= self.img.ndim <= 4:
-            raise ValueError(f"Unexpected shape {self.logits.shape} for `img`")
+            raise ValueError(f"Unexpected shape {self.img.shape} for `img`")
         if self.label is not None:
             if not self.label.ndim:
                 self.label.unsqueeze_(0)
