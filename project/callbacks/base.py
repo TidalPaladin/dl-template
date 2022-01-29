@@ -3,6 +3,7 @@
 
 from abc import ABC, abstractclassmethod, abstractmethod
 from dataclasses import dataclass
+from functools import wraps
 from queue import PriorityQueue
 from typing import (
     TYPE_CHECKING,
@@ -18,7 +19,6 @@ from typing import (
     Type,
     TypeVar,
     Union,
-    cast,
 )
 
 import pytorch_lightning as pl
@@ -41,12 +41,13 @@ else:
 BatchEndCallable = Callable[[pl.Trainer, BaseModel, Prediction, Example, int, int], None]
 
 
-def unpack_dict(wrapped) -> BatchEndCallable:
+def unpack_dict(wrapped):
     r""":class:`LightningModule` is required to return either a loss tensor or a dictionary
     for automatic optimization. This decorator unpacks a returned dictionary by looking for a
     :class:`Prediction` instance under the key `pred`
     """
 
+    @wraps(wrapped)
     def func(
         self,
         trainer: pl.Trainer,
@@ -69,7 +70,7 @@ def unpack_dict(wrapped) -> BatchEndCallable:
         assert isinstance(pred, Prediction)
         return wrapped(self, trainer, pl_module, pred, batch, batch_idx, *args, **kwargs)
 
-    return cast(BatchEndCallable, func)
+    return func
 
 
 @dataclass
