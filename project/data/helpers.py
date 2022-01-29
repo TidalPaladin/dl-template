@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+from abc import ABC, abstractproperty
 from typing import Dict, Iterator, List, Optional, Tuple
 
 from ..structs import Mode
@@ -8,14 +9,13 @@ from ..structs import Mode
 DatasetID = Tuple[Mode, str]
 
 
-class NamedDataModuleMixin:
+class NamedDataModuleMixin(ABC):
     r"""Mixin for LightningDataModules that associate names with each dataset."""
+    _lookup: Dict[Mode, List[str]]
 
-    _lookup: Dict[Mode, List[str]] = {}
-
-    @property
+    @abstractproperty
     def name(self) -> str:
-        return self.__class__.__name__
+        ...
 
     def register_name(self, mode: Mode, name: str) -> None:
         seq = self._lookup.get(mode, [])
@@ -29,10 +29,10 @@ class NamedDataModuleMixin:
 
         # single dataloader
         if dataloader_idx is None:
-            if len(seq) == 1:
-                return seq[0]
+            if len(seq) > 1:
+                raise ValueError("dataloader_idx cannot be None if more than one name is registered for a mode")
             else:
-                return self.name
+                return seq[0]
 
         # multiple dataloader
         else:
