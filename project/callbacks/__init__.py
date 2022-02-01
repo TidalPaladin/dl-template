@@ -3,6 +3,7 @@
 from .base import LoggingCallback, QueuedLoggingCallback
 from .image import ImageLoggingCallback
 from .metric import ConfusionMatrixCallback, ErrorAtUncertaintyCallback, MetricLoggingCallback
+from .table import TableCallback
 
 
 __all__ = [
@@ -12,4 +13,5 @@ __all__ = [
     "QueuedLoggingCallback",
     "MetricLoggingCallback",
     "ConfusionMatrixCallback",
+    "TableCallback",
 ]

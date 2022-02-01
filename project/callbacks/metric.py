@@ -51,7 +51,7 @@ class MetricLoggingCallback(LoggingCallback, ABC, Generic[I, O]):
             specific_modes=list(specific_modes),
         )
 
-    def register(self, state: State, pl_module: BaseModel) -> None:
+    def register(self, state: State, pl_module: BaseModel, *args, **kwargs) -> None:
         if state not in self.state_metrics.states:
             self.state_metrics.register(state, device=torch.device(pl_module.device))
 

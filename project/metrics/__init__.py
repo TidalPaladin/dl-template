@@ -3,7 +3,13 @@
 
 from .base import DataclassMetricMixin
 from .classification import UCE, Accuracy, ConfusionMatrix, Entropy, ErrorAtUncertainty
-from .collection import MetricStateCollection, PrioritizedItem, QueueStateCollection, StateCollection
+from .collection import (
+    DataFrameStateCollection,
+    MetricStateCollection,
+    PrioritizedItem,
+    QueueStateCollection,
+    StateCollection,
+)
 
 
 __all__ = [
@@ -17,4 +23,5 @@ __all__ = [
     "ErrorAtUncertainty",
     "ConfusionMatrix",
     "DataclassMetricMixin",
+    "DataFrameStateCollection",
 ]
