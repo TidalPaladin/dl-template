@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from typing import Iterable, Optional, Tuple, Union, cast
+from typing import Iterable, Optional, Tuple, Union, cast, TYPE_CHECKING, ForwardRef
 
 import torch
 import wandb
@@ -10,6 +10,12 @@ from pytorch_lightning.utilities.cli import CALLBACK_REGISTRY
 from ..metrics import QueueStateCollection
 from ..structs import BinaryPrediction, I, Mode, MultiClassPrediction, O, ResizeMixin
 from .base import QueuedLoggingCallback
+
+if TYPE_CHECKING:
+    from ..model.vit import ViTExample, ViTPrediction
+else:
+    ViTExample = ForwardRef("ViTExample")
+    ViTPrediction = ForwardRef("ViTPrediction")
 
 
 # TODO check if images from multiple GPUs end up in a single shared queue
@@ -78,3 +84,37 @@ class ImageLoggingCallback(QueuedLoggingCallback[I, O]):
 
         caption = self.caption(example, pred)
         return wandb.Image(example.img, caption=caption)
+
+@CALLBACK_REGISTRY
+class MaskedImageLoggingCallback(ImageLoggingCallback[ViTExample, O]):
+
+    @torch.no_grad()
+    def prepare_target(self, example: ViTExample, pred: O) -> wandb.Image:
+        r"""Converts a raw example/prediction pair into an object to be logged"""
+        # resize as needed
+        if self.max_size is not None and isinstance(example, ResizeMixin):
+            example = example.resize_to_fit(self.max_size, mode="bilinear", align_corners=False)
+        if self.max_size is not None and isinstance(pred, ResizeMixin):
+            pred = cast(O, cast(ResizeMixin, pred).resize_to_fit(self.max_size, mode="bilinear", align_corners=False))
+
+        caption = self.caption(example, pred)
+        return wandb.Image(example.masked_img, caption=caption)
+
+
+@CALLBACK_REGISTRY
+class FilledImageLoggingCallback(ImageLoggingCallback[ViTExample, ViTPrediction]):
+
+    @torch.no_grad()
+    def prepare_target(self, example: ViTExample, pred: ViTPrediction) -> wandb.Image:
+        r"""Converts a raw example/prediction pair into an object to be logged"""
+        # resize as needed
+        if self.max_size is not None and isinstance(example, ResizeMixin):
+            example = example.resize_to_fit(self.max_size, mode="bilinear", align_corners=False)
+        if self.max_size is not None and isinstance(pred, ResizeMixin):
+            pred = cast(O, cast(ResizeMixin, pred).resize_to_fit(self.max_size, mode="bilinear", align_corners=False))
+
+        caption = self.caption(example, pred)
+        img = example.img.clone()
+        pred_img = example.mask_indices.select(pred.masked_pred)
+        example.mask_indices.fill(img, fill_value=pred_img.type_as(img))
+        return wandb.Image(img, caption=caption)

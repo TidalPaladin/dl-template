@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 from .base import LoggingCallback, QueuedLoggingCallback
-from .image import ImageLoggingCallback
+from .image import MaskedImageLoggingCallback, ImageLoggingCallback, FilledImageLoggingCallback
 from .metric import ConfusionMatrixCallback, ErrorAtUncertaintyCallback, MetricLoggingCallback
 from .table import TableCallback
 from .wandb import WandBCheckpointCallback, WandBSaveCallback
@@ -17,4 +17,6 @@ __all__ = [
     "TableCallback",
     "WandBCheckpointCallback",
     "WandBSaveCallback",
+    "MaskedImageLoggingCallback",
+    "FilledImageLoggingCallback",
 ]

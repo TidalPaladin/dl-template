@@ -1,8 +1,10 @@
 trainer:
-  gpus: [0]
+  gpus: 2
   precision: 16
-  max_steps: 40000
+  max_steps: 100000
   check_val_every_n_epoch: 2
+  strategy: "ddp"
+  gradient_clip_val: 5.0
 
   callbacks:
     - class_path: project.callbacks.ConfusionMatrixCallback
@@ -31,26 +33,51 @@ trainer:
         queue_size: 32
         modes: ["train"]
         flush_interval: 1000
-    - class_path: pytorch_lightning.callbacks.LearningRateMonitor
-    - class_path: pytorch_lightning.callbacks.EarlyStopping
+    - class_path: project.callbacks.MaskedImageLoggingCallback
       init_args:
-        patience: 5
-        monitor: "val/cifar10/accuracy"
-        mode: "max"
+        name: "masked_img"
+        queue_size: 32
+        modes: ["train"]
+        flush_interval: 1000
+    - class_path: project.callbacks.FilledImageLoggingCallback
+      init_args:
+        name: "filled_img"
+        queue_size: 32
+        modes: ["train"]
+        flush_interval: 1000
+
+    - class_path: pytorch_lightning.callbacks.LearningRateMonitor
+      #- class_path: pytorch_lightning.callbacks.EarlyStopping
+      #  init_args:
+      #    patience: 10
+      #    monitor: "val/cifar10/accuracy"
+      #    mode: "max"
+
+data:
+  class_path: pl_bolts.datamodules.CIFAR10DataModule
+  init_args:
+    data_dir: "./data"
+    num_workers: 16
+    batch_size: 64
+
+
+model:
+  class_path: project.model.ViTModel
+    
 
 optimizer:
   class_path: torch.optim.AdamW
   init_args: 
-    lr: 0.001
-    weight_decay: 0.0001
+    lr: 0.0001
+    weight_decay: 0.01
 
 lr_scheduler_interval: 'step'
 lr_scheduler:
   class_path: torch.optim.lr_scheduler.OneCycleLR
   init_args: 
-    max_lr: 0.001
+    max_lr: 0.0001
     # TODO find a way to link to trainer.max_steps
     total_steps: 40000
     pct_start: 0.3
-    div_factor: 4
+    div_factor: 1
     final_div_factor: 20

@@ -53,7 +53,7 @@ class ConvModel(BaseModel[Example, Prediction, Loss]):
         )
 
         self.head = nn.Sequential(
-            nn.AdaptiveAvgPool2d((1, 1)), nn.Dropout2d(p=0.2), nn.Conv2d(8 * W, self.num_classes, 1)
+            nn.AdaptiveAvgPool2d((1, 1)), nn.Dropout2d(p=0.2), nn.Conv2d(8 * W, self.num_classes, 1),
         )
 
     def forward(self, example: Example) -> Prediction:
