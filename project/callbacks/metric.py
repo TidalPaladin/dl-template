@@ -1,49 +1,104 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, ForwardRef, Iterable, TypeVar, Union
+from abc import ABC, abstractmethod
+from typing import Any, Dict, Generic, Iterable, Union
 
+import pytorch_lightning as pl
+import torch
+import torchmetrics as tm
 import wandb
-from pytorch_lightning.utilities import rank_zero_only
 from pytorch_lightning.utilities.cli import CALLBACK_REGISTRY
-from torch import Tensor
 from torchmetrics import MetricCollection
 
-from ..metrics import ConfusionMatrix, ErrorAtUncertainty
-from ..structs import Mode
-from .base import MetricLoggingCallback, MetricLoggingTarget
-from .image import ImageTarget
+from ..metrics import ConfusionMatrix, ErrorAtUncertainty, MetricStateCollection
+from ..model import BaseModel
+from ..structs import I, Mode, O, State
+from .base import ALL_MODES, LoggingCallback, ModeGroup
 
 
-T = TypeVar("T", bound="ImageTarget")
+class MetricLoggingCallback(LoggingCallback, ABC, Generic[I, O]):
+    r"""Callback for logging"""
 
-
-if TYPE_CHECKING:
-    from ..model.base import BaseModel
-else:
-    BaseModel = ForwardRef("BaseModel")
-
-
-@dataclass
-class ErrorAtUncertaintyTarget(MetricLoggingTarget):
-    def log(
+    def __init__(
         self,
+        name: str,
+        collection: tm.MetricCollection,
+        modes: ModeGroup = ALL_MODES,
+        log_on_step: bool = False,
+    ):
+        super().__init__(name, modes)
+        self.state_metrics = MetricStateCollection(collection)
+        self.log_on_step = log_on_step
+
+    @abstractmethod
+    def log_target(
+        self,
+        target: Dict[str, Any],
         pl_module: BaseModel,
         tag: str,
         step: int,
-    ) -> None:
-        collection_out = self.metric.compute()
-        entropy, err, totals = next(iter(collection_out.values()))
-        entropy = entropy[totals.bool()]
-        err = err[totals.bool()]
-        return self._log(pl_module, tag, entropy, err)
+    ):
+        ...
 
-    @rank_zero_only
-    def _log(self, pl_module: BaseModel, tag: str, entropy: Tensor, err: Tensor) -> None:
-        fig = ErrorAtUncertainty.plot(entropy, err)
-        if not pl_module.state.sanity_checking:
-            pl_module.wrapped_log({tag: wandb.Image(fig)})
+    def __len__(self) -> int:
+        # it is difficult to track metrics with pending log calls, so just return 0 here
+        return 0
+
+    def reset(self, specific_states: Iterable[State] = [], specific_modes: Iterable[Mode] = []):
+        self.state_metrics.reset(
+            specific_states=list(specific_states),
+            specific_modes=list(specific_modes),
+        )
+
+    def register(self, state: State, pl_module: BaseModel) -> None:
+        if state not in self.state_metrics.states:
+            self.state_metrics.register(state, device=torch.device(pl_module.device))
+
+    def _on_batch_end(
+        self,
+        trainer: pl.Trainer,
+        pl_module: BaseModel,
+        outputs: O,
+        batch: I,
+        batch_idx: int,
+        *args,
+        **kwargs,
+    ):
+        r"""Since Callback.on_batch_end does not provide access to the batch and outputs, we must
+        implement on_X_batch_end for each mode and call this method.
+        """
+        state = pl_module.state
+        self.state_metrics.update(state, batch, outputs)
+
+        if self.log_on_step:
+            collection = self.state_metrics.get_state(state)
+            tag = state.with_postfix(self.name)
+            self.wrapped_log(
+                collection.compute(),
+                pl_module,
+                tag,
+                trainer.global_step,
+            )
+            collection.reset()
+
+    def _on_epoch_end(
+        self,
+        trainer: pl.Trainer,
+        pl_module: BaseModel,
+        mode: Mode,
+    ):
+        trainer.global_step
+        for state, metric in self.state_metrics.as_dict().items():
+            tag = state.with_postfix(self.name)
+            if state.mode == mode:
+                self.wrapped_log(
+                    metric.compute(),
+                    pl_module,
+                    tag,
+                    trainer.global_step,
+                )
+                metric.reset()
 
 
 @CALLBACK_REGISTRY
@@ -51,49 +106,49 @@ class ErrorAtUncertaintyCallback(MetricLoggingCallback):
     def __init__(
         self,
         name: str,
-        modes: Iterable[Union[str, Mode]],
+        modes: Iterable[Union[str, Mode]] = ALL_MODES,
         log_on_step: bool = False,
         **kwargs,
     ):
         kwargs["from_logits"] = True
         kwargs.setdefault("num_bins", 10)
         metric = MetricCollection({name: ErrorAtUncertainty(**kwargs)})
-        super().__init__(name, modes, metric, ErrorAtUncertaintyTarget, log_on_step)
+        super().__init__(name, metric, modes, log_on_step)
 
-
-@dataclass
-class ConfusionMatrixTarget(MetricLoggingTarget):
-    def log(
+    def log_target(
         self,
+        target: Dict[str, Any],
         pl_module: BaseModel,
         tag: str,
         step: int,
-    ) -> None:
-        collection_out = self.metric.compute()
-        mat = next(iter(collection_out.values()))
-        return self._log(pl_module, tag, mat)
-
-    @rank_zero_only
-    def _log(
-        self,
-        pl_module: BaseModel,
-        tag: str,
-        mat: Tensor,
-    ) -> None:
-        fig = ConfusionMatrix.plot(mat)
-        if not pl_module.state.sanity_checking:
-            pl_module.wrapped_log({tag: wandb.Image(fig)})
+    ):
+        entropy, err, totals = next(iter(target.values()))
+        entropy = entropy[totals.bool()]
+        err = err[totals.bool()]
+        fig = ErrorAtUncertainty.plot(entropy, err)
+        pl_module.wrapped_log({tag: wandb.Image(fig)})
 
 
 @CALLBACK_REGISTRY
-class ConfusionMatrixCallback(MetricLoggingCallback):
+class ConfusionMatrixCallback(MetricLoggingCallback[I, O]):
     def __init__(
         self,
         name: str,
-        modes: Iterable[Union[str, Mode]],
         num_classes: int,
+        modes: Iterable[Union[str, Mode]] = ALL_MODES,
         log_on_step: bool = False,
         **kwargs,
     ):
         metric = MetricCollection({name: ConfusionMatrix(num_classes, **kwargs)})
-        super().__init__(name, modes, metric, ConfusionMatrixTarget, log_on_step)
+        super().__init__(name, metric, modes, log_on_step)
+
+    def log_target(
+        self,
+        target: Dict[str, Any],
+        pl_module: BaseModel,
+        tag: str,
+        step: int,
+    ):
+        mat = next(iter(target.values()))
+        fig = ConfusionMatrix.plot(mat)
+        pl_module.wrapped_log({tag: wandb.Image(fig)})

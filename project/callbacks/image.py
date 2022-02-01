@@ -1,91 +1,20 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, ForwardRef, Iterable, List, Optional, Tuple, Type, TypeVar, Union, cast
+from typing import Iterable, Optional, Tuple, Union, cast
 
 import torch
 import wandb
-from pytorch_lightning.utilities import rank_zero_only
 from pytorch_lightning.utilities.cli import CALLBACK_REGISTRY
-from torch import Tensor
 
 from ..metrics import QueueStateCollection
 from ..structs import BinaryPrediction, I, Mode, MultiClassPrediction, O, ResizeMixin
-from .base import LoggingTarget, QueuedLoggingCallback
-
-
-T = TypeVar("T", bound="ImageTarget")
-
-
-if TYPE_CHECKING:
-    from ..model.base import BaseModel
-else:
-    BaseModel = ForwardRef("BaseModel")
-
-
-@dataclass
-class ImageTarget(LoggingTarget[I, O]):
-    example: I
-    pred: O
-
-    def overlay(self: T, overlay: Tensor, alpha: float = 0.5) -> T:
-        raise NotImplementedError("overlay")
-        assert overlay.ndim == self.example.img.ndim
-        if self.example.is_batched:
-            assert overlay.ndim == 4
-
-    @property
-    def caption(self) -> Optional[str]:
-        if self.example.has_label:
-            assert self.example.label is not None
-            if isinstance(self.pred, MultiClassPrediction):
-                p_cls = self.pred.probs_for_class(self.example.label).item()
-            else:
-                p_cls = self.pred.probs.item()
-            caption = f"P={p_cls:0.3f}"
-
-        else:
-            caption = f"P={self.pred.probs.argmax():0.3f}"
-
-        return caption
-
-    @classmethod
-    def create(cls: Type[T], example: I, pred: O) -> T:
-        return cls(example, pred)
-
-
-@dataclass
-class WandBImageTarget(ImageTarget[I, O]):
-    @rank_zero_only
-    def log(
-        self,
-        pl_module: BaseModel,
-        tag: str,
-        step: int,
-    ) -> wandb.Image:
-        return wandb.Image(self.example.img, caption=self.caption)
-
-    @classmethod
-    def deferred_log(
-        cls,
-        pl_module: BaseModel,
-        tag: str,
-        step: int,
-        targets: List[wandb.Image],
-    ) -> None:
-        target = {"trainer/global_step": step, tag: targets}
-        if not pl_module.state.sanity_checking:
-            pl_module.logger.experiment.log(target, commit=False)
-
-    @classmethod
-    def create(cls: Type[T], example: I, pred: O) -> T:
-        return cls(example, pred)
+from .base import QueuedLoggingCallback
 
 
 # TODO check if images from multiple GPUs end up in a single shared queue
 @CALLBACK_REGISTRY
-class QueuedImageLoggingCallback(QueuedLoggingCallback[I, O]):
+class ImageLoggingCallback(QueuedLoggingCallback[I, O]):
     queues: QueueStateCollection
 
     def __init__(
@@ -94,15 +23,11 @@ class QueuedImageLoggingCallback(QueuedLoggingCallback[I, O]):
         queue_size: int,
         modes: Iterable[Union[str, Mode]] = ["val", "test"],
         max_size: Optional[Tuple[int, int]] = None,
-        target_cls: Type[ImageTarget] = WandBImageTarget,
         flush_interval: int = 0,
         negate_priority: bool = False,
     ):
-        self.queue_size = queue_size
         self.max_size = max_size
-        self.name = name
-        self.queues = QueueStateCollection()
-        super().__init__(name, modes, queue_size, target_cls, flush_interval, negate_priority)
+        super().__init__(name, queue_size, modes, flush_interval, negate_priority)
 
     @classmethod
     @torch.no_grad()
@@ -128,8 +53,22 @@ class QueuedImageLoggingCallback(QueuedLoggingCallback[I, O]):
         else:
             raise NotImplementedError(f"`get_priority` not implemented for type {type(pred)}")
 
+    def caption(self, example: I, pred: O) -> Optional[str]:
+        if example.has_label:
+            assert example.label is not None
+            if isinstance(pred, MultiClassPrediction):
+                p_cls = pred.probs_for_class(example.label).item()
+            else:
+                p_cls = pred.probs.item()
+            caption = f"P={p_cls:0.3f}"
+
+        else:
+            caption = f"P={pred.probs.argmax():0.3f}"
+
+        return caption
+
     @torch.no_grad()
-    def prepare_logging_target(self, example: I, pred: O) -> ImageTarget[I, O]:
+    def prepare_target(self, example: I, pred: O) -> wandb.Image:
         r"""Converts a raw example/prediction pair into an object to be logged"""
         # resize as needed
         if self.max_size is not None and isinstance(example, ResizeMixin):
@@ -137,4 +76,5 @@ class QueuedImageLoggingCallback(QueuedLoggingCallback[I, O]):
         if self.max_size is not None and isinstance(pred, ResizeMixin):
             pred = cast(O, cast(ResizeMixin, pred).resize_to_fit(self.max_size, mode="bilinear", align_corners=False))
 
-        return self.target_cls.create(example, pred)  # type: ignore
+        caption = self.caption(example, pred)
+        return wandb.Image(example.img, caption=caption)

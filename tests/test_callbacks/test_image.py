@@ -5,14 +5,21 @@ from typing import Dict
 
 import pytest
 import torch
+import wandb
 
-from project.callbacks import ImageTarget, QueuedImageLoggingCallback
+from project.callbacks import ImageLoggingCallback
 from project.structs import BinaryPrediction, Example, Mode, MultiClassPrediction, State
+from tests.test_callbacks.base_callback import BaseCallbackTest
 
 
-class TestQueuedImageLoggingCallback:
+class TestImageLoggingCallback(BaseCallbackTest):
     def test_init(self):
-        cb = QueuedImageLoggingCallback("img", queue_size=16)
+        cb = ImageLoggingCallback("img", queue_size=16)
+
+    @pytest.fixture
+    def callback(self, modes):
+        cb = ImageLoggingCallback("name", 16, modes)
+        return cb
 
     @pytest.mark.parametrize(
         "label,score,exp",
@@ -31,7 +38,7 @@ class TestQueuedImageLoggingCallback:
 
         example = Example(img=torch.rand(3, 32, 32), label=torch.tensor(label).view(1) if label is not None else None)
         pred = BinaryPrediction(logits=logit.view(1))
-        priority = QueuedImageLoggingCallback.get_priority(example, pred)
+        priority = ImageLoggingCallback.get_priority(example, pred)
         if exp is None:
             assert priority is None
         else:
@@ -50,7 +57,7 @@ class TestQueuedImageLoggingCallback:
     def test_get_priority_multiclass(self, label, logits, exp):
         example = Example(img=torch.rand(3, 32, 32), label=torch.tensor(label).view(1) if label is not None else None)
         pred = MultiClassPrediction(logits=torch.tensor(logits))
-        priority = QueuedImageLoggingCallback.get_priority(example, pred)
+        priority = ImageLoggingCallback.get_priority(example, pred)
         if exp is None:
             assert priority is None
         else:
@@ -63,7 +70,7 @@ class TestQueuedImageLoggingCallback:
         )
         pred = BinaryPrediction(logits=torch.rand(4, 1))
         with pytest.raises(ValueError):
-            QueuedImageLoggingCallback.get_priority(example, pred)
+            ImageLoggingCallback.get_priority(example, pred)
 
     @pytest.mark.parametrize(
         "max_size",
@@ -75,20 +82,20 @@ class TestQueuedImageLoggingCallback:
     )
     def test_prepare_logging_target(self, max_size):
         example = Example(
-            img=torch.rand(4, 3, 32, 32),
-            label=torch.rand(4, 1),
+            img=torch.rand(3, 32, 32),
+            label=torch.rand(1),
         )
-        pred = BinaryPrediction(logits=torch.rand(4, 1))
+        pred = BinaryPrediction(logits=torch.rand(1))
 
-        cb = QueuedImageLoggingCallback("img", queue_size=16, max_size=max_size)
-        result = cb.prepare_logging_target(example, pred)
+        cb = ImageLoggingCallback("img", queue_size=16, max_size=max_size)
+        result = cb.prepare_target(example, pred)
 
-        assert isinstance(result, ImageTarget)
+        assert isinstance(result, wandb.Image)
 
         if max_size is not None:
             H, W = example.img.shape[-2:]
             H_max, W_max = max_size
-            H_out, W_out = result.example.img.shape[-2:]
+            H_out, W_out = result.image.height, result.image.width  # type: ignore
             assert H_out <= H_max
             assert W_out <= W_max
             assert H_out / W_out == H / W, "aspect ratio should be preserved"
@@ -114,7 +121,7 @@ class TestQueuedImageLoggingCallback:
         keep_keys = priority.topk(k=queue_size).values
         keep_preds = {k.item(): preds[k.item()] for k in keep_keys}
 
-        cb = QueuedImageLoggingCallback("img", queue_size=queue_size)
+        cb = ImageLoggingCallback("img", queue_size=queue_size)
         state = State(Mode.TEST)
         cb.register(state)
         queue = cb.queues.get_state(state)
@@ -141,7 +148,7 @@ class TestQueuedImageLoggingCallback:
         logit = torch.rand(1)
         pred = BinaryPrediction(logit)
 
-        cb = QueuedImageLoggingCallback("img", queue_size=8)
+        cb = ImageLoggingCallback("img", queue_size=8)
         state = State(Mode.TEST)
         cb.register(state)
         queue = cb.queues.get_state(state)
@@ -158,7 +165,7 @@ class TestQueuedImageLoggingCallback:
         )
 
         total_size = 8
-        cb = QueuedImageLoggingCallback("img", queue_size=total_size)
+        cb = ImageLoggingCallback("img", queue_size=total_size)
         state = State(Mode.TEST)
         cb.register(state)
         queue = cb.queues.get_state(state)
@@ -193,7 +200,7 @@ class TestQueuedImageLoggingCallback:
     def test_training_log(self, lightning_module, logger, mode, should_log):
         state = State(mode)
         lightning_module.state = state
-        cb = QueuedImageLoggingCallback("img", 8)
+        cb = ImageLoggingCallback("img", 8, modes=[mode])
 
         B = 4
         example = Example(img=torch.rand(B, 3, 32, 32), label=torch.randint(0, 1, (B, 1)))
@@ -218,7 +225,7 @@ class TestQueuedImageLoggingCallback:
     def test_queued_log(self, lightning_module, logger, mode, queue_size):
         state = State(mode)
         lightning_module.state = state
-        cb = QueuedImageLoggingCallback("img", queue_size)
+        cb = ImageLoggingCallback("img", queue_size)
 
         B = 4
         for _ in range(3):
@@ -233,7 +240,7 @@ class TestQueuedImageLoggingCallback:
             )
 
         logger.experiment.log.assert_not_called()
-        assert cb.total_queued_items <= queue_size
+        assert len(cb) <= queue_size
 
         cb._on_epoch_end(lightning_module.trainer, lightning_module, mode)
 

@@ -27,7 +27,7 @@ class UCE(cm.UCE, DataclassMetricMixin):
     def update(self, example: Example, pred: Prediction) -> None:
         if example.label is None:
             return
-        p = pred.logits
+        p = pred.logits.float()
         t = example.label.view(-1)
         assert t is not None
         super().update(p, t)
@@ -35,7 +35,7 @@ class UCE(cm.UCE, DataclassMetricMixin):
 
 class Entropy(cm.Entropy, DataclassMetricMixin):
     def update(self, example: Example, pred: Prediction) -> None:
-        p = pred.logits
+        p = pred.logits.float()
         super().update(p)
 
 
@@ -43,7 +43,7 @@ class ErrorAtUncertainty(cm.ErrorAtUncertainty, DataclassMetricMixin):
     def update(self, example: Example, pred: Prediction) -> None:
         if example.label is None:
             return
-        p = pred.logits
+        p = pred.logits.float()
         t = example.label.view(-1)
         assert t is not None
         super().update(p, t)
