@@ -14,18 +14,18 @@ trainer:
       init_args:
         name: "uncert"
         modes: ["train", "val", "test"]
-    - class_path: project.callbacks.QueuedImageLoggingCallback
+    - class_path: project.callbacks.ImageLoggingCallback
       init_args:
         name: "image_worst"
         queue_size: 32
         modes: ["val", "test"]
-    - class_path: project.callbacks.QueuedImageLoggingCallback
+    - class_path: project.callbacks.ImageLoggingCallback
       init_args:
         name: "image_best"
         queue_size: 32
         modes: ["val", "test"]
         negate_priority: true
-    - class_path: project.callbacks.QueuedImageLoggingCallback
+    - class_path: project.callbacks.ImageLoggingCallback
       init_args:
         name: "image"
         queue_size: 32

@@ -1,19 +1,15 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-from .base import IntervalLoggingCallback, LoggingCallback, LoggingTarget, MetricLoggingCallback, QueuedLoggingCallback
-from .image import ImageTarget, QueuedImageLoggingCallback, WandBImageTarget
-from .metric import ConfusionMatrixCallback, ErrorAtUncertaintyCallback
+from .base import LoggingCallback, QueuedLoggingCallback
+from .image import ImageLoggingCallback
+from .metric import ConfusionMatrixCallback, ErrorAtUncertaintyCallback, MetricLoggingCallback
 
 
 __all__ = [
-    "QueuedImageLoggingCallback",
-    "WandBImageTarget",
-    "LoggingTarget",
-    "ImageTarget",
+    "ImageLoggingCallback",
     "ErrorAtUncertaintyCallback",
     "LoggingCallback",
     "QueuedLoggingCallback",
-    "IntervalLoggingCallback",
     "MetricLoggingCallback",
     "ConfusionMatrixCallback",
 ]

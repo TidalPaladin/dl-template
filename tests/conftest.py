@@ -12,6 +12,7 @@ from pytorch_lightning.loggers import WandbLogger
 
 from combustion.testing import cuda_or_skip as cuda_or_skip_mark
 from combustion.testing.utils import cuda_available
+from project.model import BaseModel
 
 
 LIBRARIES: Final = (
@@ -62,8 +63,13 @@ def logger(mocker):
 
 
 @pytest.fixture
-def lightning_module(mocker, logger):
+def lightning_module(mocker, logger, capsys):
     trainer = pl.Trainer(logger=logger)
-    module = pl.LightningModule()
+    module = BaseModel()
     module.trainer = trainer
     return module
+
+
+@pytest.fixture
+def pl_module(lightning_module):
+    return lightning_module

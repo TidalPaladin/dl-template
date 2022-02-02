@@ -2,43 +2,21 @@
 # -*- coding: utf-8 -*-
 
 from abc import ABC, abstractclassmethod, abstractmethod
-from dataclasses import dataclass
 from functools import wraps
 from queue import PriorityQueue
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    Dict,
-    ForwardRef,
-    Generic,
-    Iterator,
-    List,
-    Optional,
-    Tuple,
-    Type,
-    TypeVar,
-    Union,
-)
+from typing import Any, Dict, Generic, Iterable, Iterator, Optional, Tuple, Union
 
 import pytorch_lightning as pl
 import torch
-import torchmetrics as tm
 from pytorch_lightning.callbacks import Callback
+from pytorch_lightning.utilities import rank_zero_only
 
-from ..metrics import MetricStateCollection, PrioritizedItem, QueueStateCollection
+from ..metrics import PrioritizedItem, QueueStateCollection
+from ..model.base import BaseModel
 from ..structs import Example, I, Mode, ModeGroup, O, Prediction, State
 
 
-T = TypeVar("T", bound="LoggingTarget")
-
-if TYPE_CHECKING:
-    from ..model.base import BaseModel
-else:
-    BaseModel = ForwardRef("BaseModel")
-
-# Signature for Callback.on_X_batch_end
-BatchEndCallable = Callable[[pl.Trainer, BaseModel, Prediction, Example, int, int], None]
+ALL_MODES: ModeGroup = ["train", "val", "test"]
 
 
 def unpack_dict(wrapped):
@@ -73,46 +51,7 @@ def unpack_dict(wrapped):
     return func
 
 
-@dataclass
-class LoggingTarget(ABC, Generic[I, O]):
-    r"""Callbacks that perform a logging operation produce :class:`LoggingTarget` instances.
-    This decouples the operation of producing loggable objects from the logger-specific handling
-    needed to log such objects.
-    """
-
-    @abstractmethod
-    def log(
-        self,
-        pl_module: BaseModel,
-        tag: str,
-        step: int,
-    ) -> Any:
-        ...
-
-    @classmethod
-    def deferred_log(
-        cls,
-        pl_module: BaseModel,
-        tag: str,
-        step: int,
-        targets: List[Any],
-    ) -> None:
-        r"""Some loggers require related items (such as a batch) to be grouped into a single log call.
-        In such situations, ``log`` should return something to be logged for a single ``LoggingTarget``.
-        Callbacks will aggregate the outputs of ``log`` and pass them to this function for deferred logging.
-        """
-        raise NotImplementedError(
-            f"{cls.__name__}.deferred_log was called, but no implementation was provided. "
-            "If you intend to defer logging, please provide an implementation. "
-            "If you did not intend to defer logging, please ensure that `log` does not return anything."
-        )
-
-    @abstractclassmethod
-    def create(cls: Type[T], example: I, pred: O) -> T:  # type: ignore
-        ...
-
-
-class LoggingCallback(Callback, Generic[I, O]):
+class LoggingCallback(Callback, ABC, Generic[I, O]):
     r"""Callback that implements a limited size priority queue for items seen during an epoch.
     Only the top-k highest priority items from the epoch are retained. All items in the queue are
     logged at epoch completion.
@@ -121,20 +60,155 @@ class LoggingCallback(Callback, Generic[I, O]):
         name:
             Name / tag under which to log. State information will be prepended to ``name``.
 
-        queue_size:
-            Size of the priority queue
+        modes:
+            Specific modes for wich this callback should run
     """
 
-    def __init__(self, name: str, modes: ModeGroup, target_cls: Type[LoggingTarget]):
+    def __init__(self, name: str, modes: ModeGroup = ALL_MODES):
         super().__init__()
         self.modes = tuple(Mode.from_group(modes))
         self.name = name
-        self.target_cls = target_cls
 
-    @torch.no_grad()
-    def prepare_logging_target(self, example: I, pred: O) -> LoggingTarget[I, O]:
-        r"""Converts a raw example/prediction pair into an object to be logged"""
-        return self.target_cls.create(example, pred)  # type: ignore
+    @abstractmethod
+    def __len__(self) -> int:
+        r"""Returns the number of items pending logging."""
+        ...
+
+    @abstractmethod
+    def reset(self, specific_states: Iterable[State] = [], specific_modes: Iterable[Mode] = []):
+        r"""Reset the state of this logging callback"""
+        ...
+
+    @abstractmethod
+    def register(self, state: State, pl_module: BaseModel) -> None:
+        r"""Performs any setup/registration needed for a given state. This method will only be
+        called if ``state.mode in self.modes``. It may be called multiple times for a given state.
+        """
+        ...
+
+    @abstractmethod
+    def _on_batch_end(
+        self,
+        trainer: pl.Trainer,
+        pl_module: BaseModel,
+        outputs: O,
+        batch: I,
+        batch_idx: int,
+        *args,
+        **kwargs,
+    ):
+        r"""Handles callback logic when batch ends."""
+
+    @abstractmethod
+    def _on_epoch_end(
+        self,
+        trainer: pl.Trainer,
+        pl_module: BaseModel,
+        mode: Mode,
+    ):
+        r"""Handles callback logic when epoch ends."""
+        ...
+
+    def log_target(
+        self,
+        target: Any,
+        pl_module: BaseModel,
+        tag: str,
+        step: int,
+    ):
+        r"""Log an arbitrary target. This will probably be subclassed to support logging
+        of whatever your callback generates.
+
+        .. note:
+            Do not attempt to override :class:`Callback.log` - Pytorch Lightning seems to
+            have problems with this.
+        """
+        target_dict = {"trainer/global_step": step, tag: target}
+        pl_module.logger.experiment.log(target, commit=False)
+
+    @unpack_dict
+    def on_train_batch_end(
+        self,
+        trainer: pl.Trainer,
+        pl_module: BaseModel,
+        outputs: O,
+        batch: I,
+        batch_idx: int,
+        *args,
+        **kwargs,
+    ):
+        state = pl_module.state
+        if state.mode not in self.modes:
+            return
+        if not isinstance(outputs, Prediction):
+            raise TypeError(f"Expected `outputs` to be type `Prediction`, found {type(outputs)}")
+        if not isinstance(batch, Example):
+            raise TypeError(f"Expected `batch` to be type `Example`, found {type(batch)}")
+        self.register(state, pl_module)
+        self._on_batch_end(trainer, pl_module, outputs, batch, batch_idx, *args, **kwargs)
+
+    @unpack_dict
+    def on_validation_batch_end(
+        self,
+        trainer: pl.Trainer,
+        pl_module: BaseModel,
+        outputs: O,
+        batch: I,
+        batch_idx: int,
+        *args,
+        **kwargs,
+    ):
+        state = pl_module.state
+        if state.mode not in self.modes:
+            return
+        if not isinstance(outputs, Prediction):
+            raise TypeError(f"Expected `outputs` to be type `Prediction`, found {type(outputs)}")
+        if not isinstance(batch, Example):
+            raise TypeError(f"Expected `batch` to be type `Example`, found {type(batch)}")
+        self.register(state, pl_module)
+        self._on_batch_end(trainer, pl_module, outputs, batch, batch_idx, *args, **kwargs)
+
+    @unpack_dict
+    def on_test_batch_end(
+        self,
+        trainer: pl.Trainer,
+        pl_module: BaseModel,
+        outputs: O,
+        batch: I,
+        batch_idx: int,
+        *args,
+        **kwargs,
+    ):
+        state = pl_module.state
+        if state.mode not in self.modes:
+            return
+        if not isinstance(outputs, Prediction):
+            raise TypeError(f"Expected `outputs` to be type `Prediction`, found {type(outputs)}")
+        if not isinstance(batch, Example):
+            raise TypeError(f"Expected `batch` to be type `Example`, found {type(batch)}")
+        self.register(state, pl_module)
+        self._on_batch_end(trainer, pl_module, outputs, batch, batch_idx, *args, **kwargs)
+
+    def on_train_epoch_begin(self, *args, **kwargs):
+        self.reset(specific_modes=[Mode.TRAIN])
+        assert len(self) == 0, "No items should be pending logging after reset"
+
+    def on_validation_epoch_begin(self, *args, **kwargs):
+        self.reset(specific_modes=[Mode.VAL])
+        assert len(self) == 0, "No items should be pending logging after reset"
+
+    def on_test_epoch_begin(self, *args, **kwargs):
+        self.reset(specific_modes=[Mode.TEST])
+        assert len(self) == 0, "No items should be pending logging after reset"
+
+    def on_train_epoch_end(self, *args, **kwargs):
+        self._on_epoch_end(*args, **kwargs, mode=Mode.TRAIN)
+
+    def on_validation_epoch_end(self, *args, **kwargs):
+        self._on_epoch_end(*args, **kwargs, mode=Mode.VAL)
+
+    def on_test_epoch_end(self, *args, **kwargs):
+        self._on_epoch_end(*args, **kwargs, mode=Mode.TEST)
 
     def on_sanity_check_start(self, trainer: pl.Trainer, pl_module: BaseModel):
         pl_module.state = pl_module.state.set_sanity_checking(True)
@@ -142,8 +216,24 @@ class LoggingCallback(Callback, Generic[I, O]):
     def on_sanity_check_end(self, trainer: pl.Trainer, pl_module: BaseModel):
         pl_module.state = pl_module.state.set_sanity_checking(False)
 
+    @rank_zero_only
+    def wrapped_log(
+        self,
+        target: Any,
+        pl_module: BaseModel,
+        tag: str,
+        step: int,
+    ):
+        r"""Wrapper that calls self.log only on rank zero and when not sanity checking"""
+        print(target)
+        assert isinstance(pl_module, BaseModel)
+        assert isinstance(tag, str) and tag
+        assert isinstance(step, int) and step >= 0
+        if not pl_module.state.sanity_checking:
+            self.log_target(target, pl_module, tag, step)
 
-class QueuedLoggingCallback(LoggingCallback, Generic[I, O]):
+
+class QueuedLoggingCallback(LoggingCallback, ABC, Generic[I, O]):
     r"""Callback that implements a limited size priority queue for items seen during an epoch.
     Only the top-k highest priority items from the epoch are retained. All items in the queue are
     logged at epoch completion, or at an interval if desired.
@@ -175,13 +265,12 @@ class QueuedLoggingCallback(LoggingCallback, Generic[I, O]):
     def __init__(
         self,
         name: str,
-        modes: ModeGroup,
         queue_size: int,
-        target_cls: Type[LoggingTarget],
+        modes: ModeGroup = ALL_MODES,
         flush_interval: int = 0,
         negate_priority: bool = False,
     ):
-        super().__init__(name, modes, target_cls)
+        super().__init__(name, modes)
         self.queue_size = queue_size
         self.flush_interval = flush_interval
         self.queues = QueueStateCollection()
@@ -196,28 +285,24 @@ class QueuedLoggingCallback(LoggingCallback, Generic[I, O]):
         """
         ...
 
-    def register(self, state: State) -> None:
+    @abstractmethod
+    def prepare_target(self, example: I, pred: O) -> Any:
+        ...
+
+    def __len__(self) -> int:
+        return len(self.queues)
+
+    def register(self, state: State, *args, **kwargs) -> None:
         r"""Register a queue for a given state."""
-        return self.queues.register(state, maxsize=self.queue_size)
+        if state not in self.queues.states:
+            self.queues.register(state, maxsize=self.queue_size)
 
-    def clear_queues(self, mode: Optional[Mode] = None) -> None:
-        r"""Register a queue for a given state."""
-        if mode is None:
-            self.queues.reset(specific_modes=self.modes)
-        else:
-            self.queues.reset(specific_modes=[mode])
-
-    @unpack_dict
-    def on_train_batch_end(self, *args, **kwargs):
-        self._on_batch_end(*args, **kwargs)
-
-    @unpack_dict
-    def on_validation_batch_end(self, *args, **kwargs):
-        self._on_batch_end(*args, **kwargs)
-
-    @unpack_dict
-    def on_test_batch_end(self, *args, **kwargs):
-        self._on_batch_end(*args, **kwargs)
+    def reset(self, specific_states: Iterable[State] = [], specific_modes: Iterable[Mode] = []):
+        r"""Reset the state of this logging callback"""
+        self.queues.reset(
+            specific_states=list(specific_states),
+            specific_modes=list(specific_modes),
+        )
 
     def _on_batch_end(
         self,
@@ -232,18 +317,7 @@ class QueuedLoggingCallback(LoggingCallback, Generic[I, O]):
         r"""Since Callback.on_batch_end does not provide access to the batch and outputs, we must
         implement on_X_batch_end for each mode and call this method.
         """
-        if not isinstance(outputs, Prediction):
-            raise TypeError(f"Expected `outputs` to be type `Prediction`, found {type(outputs)}")
-        if not isinstance(batch, Example):
-            raise TypeError(f"Expected `batch` to be type `Example`, found {type(batch)}")
-
-        state = self.state = pl_module.state
-        if state.mode not in self.modes:
-            return
-
-        # register a queue for this state if needed
-        if self.state not in self.queues.states:
-            self.queues.register(self.state, maxsize=self.queue_size)
+        state = pl_module.state
 
         # try to put this batch into the queue
         self.enqueue(batch, outputs, self.queues.get_state(state))
@@ -254,32 +328,6 @@ class QueuedLoggingCallback(LoggingCallback, Generic[I, O]):
         if self.flush_interval and (step % self.flush_interval == 0) and step:
             self.flush_queues(pl_module, state.mode, step)
 
-    def on_train_epoch_begin(self, *args, **kwargs):
-        self._on_epoch_begin(*args, **kwargs, mode=Mode.TRAIN)
-
-    def on_validation_epoch_begin(self, *args, **kwargs):
-        self._on_epoch_begin(*args, **kwargs, mode=Mode.VAL)
-
-    def on_test_epoch_begin(self, *args, **kwargs):
-        self._on_epoch_begin(*args, **kwargs, mode=Mode.TEST)
-
-    def on_train_epoch_end(self, *args, **kwargs):
-        self._on_epoch_end(*args, **kwargs, mode=Mode.TRAIN)
-
-    def on_validation_epoch_end(self, *args, **kwargs):
-        self._on_epoch_end(*args, **kwargs, mode=Mode.VAL)
-
-    def on_test_epoch_end(self, *args, **kwargs):
-        self._on_epoch_end(*args, **kwargs, mode=Mode.TEST)
-
-    def _on_epoch_begin(
-        self,
-        *args,
-        mode: Mode,
-        **kwargs,
-    ):
-        self.clear_queues(mode)
-
     def _on_epoch_end(
         self,
         trainer: pl.Trainer,
@@ -288,7 +336,7 @@ class QueuedLoggingCallback(LoggingCallback, Generic[I, O]):
     ):
         # discard queue at epoch end when using a flush_interval
         if self.flush_interval:
-            self.clear_queues(mode)
+            self.reset(specific_modes=[mode])
 
         # otherwise flush and log the queue
         else:
@@ -303,23 +351,9 @@ class QueuedLoggingCallback(LoggingCallback, Generic[I, O]):
 
         # dequeue and log all targets
         for state, queue in queues_to_flush.items():
-            deferred: List[Any] = []
             tag = state.with_postfix(self.name)
-            for (
-                example,
-                pred,
-            ) in self.dequeue_all(queue):
-                target = self.prepare_logging_target(example, pred)
-                defer = target.log(pl_module, tag, step)
-                if defer is not None:
-                    deferred.append(defer)
-            if deferred:
-                self.target_cls.deferred_log(pl_module, tag, step, deferred)
-
-    @property
-    def total_queued_items(self) -> int:
-        r"""Gets the total number of currently queued items across all states"""
-        return len(self.queues)
+            targets = [self.prepare_target(example, pred) for example, pred in self.dequeue_all(queue)]
+            self.wrapped_log(targets, pl_module, tag, step)
 
     @torch.no_grad()
     def enqueue(self, example: I, pred: O, queue: PriorityQueue) -> bool:
@@ -364,133 +398,3 @@ class QueuedLoggingCallback(LoggingCallback, Generic[I, O]):
             item = queue.get()
             example, pred = item.item
             yield example, pred
-
-
-class IntervalLoggingCallback(LoggingCallback, Generic[I, O]):
-    def __init__(self, name: str, modes: ModeGroup, log_interval: int, target_cls: Type[LoggingTarget]):
-        super().__init__(name, modes, target_cls)
-        self.log_interval = log_interval
-
-    def on_train_batch_end(self, *args, **kwargs):
-        self._on_batch_end(*args, **kwargs)
-
-    def on_validation_batch_end(self, *args, **kwargs):
-        self._on_batch_end(*args, **kwargs)
-
-    def on_test_batch_end(self, *args, **kwargs):
-        self._on_batch_end(*args, **kwargs)
-
-    def _on_batch_end(
-        self,
-        trainer: pl.Trainer,
-        pl_module: BaseModel,
-        outputs: O,
-        batch: I,
-        batch_idx: int,
-    ):
-        r"""Since Callback.on_batch_end does not provide access to the batch and outputs, we must
-        implement on_X_batch_end for each mode and call this method.
-        """
-        state = self.state = pl_module.state
-        needs_logging = state in self.modes and (batch_idx % self.log_interval == 0)
-        if not needs_logging:
-            return
-
-        def log(e: I, p: O):
-            target = self.prepare_logging_target(e, p)
-            tag = state.with_postfix(self.name)
-            target.log(pl_module, tag, trainer.global_step)
-
-        if batch.is_batched:
-            for e, p in zip(batch, outputs):
-                log(e, p)  # type: ignore
-        else:
-            log(batch, outputs)
-
-
-@dataclass
-class MetricLoggingTarget(LoggingTarget[I, O]):
-    metric: tm.MetricCollection
-
-    @classmethod
-    def create(
-        cls: Type["MetricLoggingTarget"],
-        metric: tm.MetricCollection,
-        example: I,
-        pred: O,
-    ) -> "MetricLoggingTarget":
-        metric.update(example, pred)
-        return cls(metric)
-
-
-# NOTE: metric.reset() must be explicitly called for Callback metrics
-class MetricLoggingCallback(LoggingCallback, Generic[I, O]):
-    target_cls: MetricLoggingTarget
-
-    def __init__(
-        self,
-        name: str,
-        modes: ModeGroup,
-        collection: tm.MetricCollection,
-        target_cls: Type[MetricLoggingTarget],
-        log_on_step: bool = False,
-    ):
-        super().__init__(name, modes, target_cls)
-        self.state_metrics = MetricStateCollection(collection)
-        self.log_on_step = log_on_step
-
-    @unpack_dict
-    def on_train_batch_end(self, *args, **kwargs):
-        self._on_batch_end(*args, **kwargs)
-
-    @unpack_dict
-    def on_validation_batch_end(self, *args, **kwargs):
-        self._on_batch_end(*args, **kwargs)
-
-    @unpack_dict
-    def on_test_batch_end(self, *args, **kwargs):
-        self._on_batch_end(*args, **kwargs)
-
-    def _on_batch_end(
-        self, trainer: pl.Trainer, pl_module: BaseModel, outputs: O, batch: I, batch_idx: int, *args, **kwargs
-    ):
-        r"""Since Callback.on_batch_end does not provide access to the batch and outputs, we must
-        implement on_X_batch_end for each mode and call this method.
-        """
-        state = self.state = pl_module.state
-        if state.mode not in self.modes:
-            return
-
-        self.state_metrics.register(state, device=torch.device(pl_module.device))
-        collection = self.state_metrics.get_state(state)
-
-        outputs = outputs.replace(logits=outputs.logits.float())
-        target = self.target_cls.create(collection, batch, outputs)
-
-        if self.log_on_step:
-            tag = state.with_postfix(self.name)
-            target.log(pl_module, tag, trainer.global_step)
-            collection.reset()
-
-    def on_train_epoch_end(self, *args, **kwargs):
-        self._on_epoch_end(*args, **kwargs, mode=Mode.TRAIN)
-
-    def on_validation_epoch_end(self, *args, **kwargs):
-        self._on_epoch_end(*args, **kwargs, mode=Mode.VAL)
-
-    def on_test_epoch_end(self, *args, **kwargs):
-        self._on_epoch_end(*args, **kwargs, mode=Mode.TEST)
-
-    def _on_epoch_end(
-        self,
-        trainer: pl.Trainer,
-        pl_module: BaseModel,
-        mode: Mode,
-    ):
-        step = trainer.global_step
-        for state, metric in self.state_metrics.as_dict().items():
-            tag = state.with_postfix(self.name)
-            if state.mode == mode:
-                target = self.target_cls(metric)  # type: ignore
-                target.log(pl_module, tag, step)
-                metric.reset()
