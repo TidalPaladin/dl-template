@@ -219,3 +219,7 @@ class BaseCallbackTest:
         else:
             raise ValueError()
         logger.experiment.log.assert_called()
+        mock_calls = logger.experiment.log.mock_calls
+        for call in mock_calls:
+            assert isinstance(call.args[0], dict)
+            assert "commit" in call.kwargs and not call.kwargs["commit"]
