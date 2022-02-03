@@ -198,6 +198,7 @@ class BaseModel(pl.LightningModule, Generic[I, O, L]):
         except Exception:
             raise RuntimeError("Failed to create example")
 
+    @rank_zero_only
     def commit_logs(self, step: int = None) -> None:
         if isinstance(self.logger, WandbLogger):
             assert self.global_step >= self.logger.experiment.step

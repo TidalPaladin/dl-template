@@ -130,7 +130,7 @@ class LoggingCallback(Callback, ABC, Generic[I, O]):
             have problems with this.
         """
         target_dict = {"trainer/global_step": step, tag: target}
-        pl_module.logger.experiment.log(target, commit=False)
+        pl_module.logger.experiment.log(target_dict, commit=False)
 
     @unpack_dict
     def on_train_batch_end(
@@ -231,7 +231,6 @@ class LoggingCallback(Callback, ABC, Generic[I, O]):
         step: int,
     ):
         r"""Wrapper that calls self.log only on rank zero and when not sanity checking"""
-        print(target)
         assert isinstance(pl_module, BaseModel)
         assert isinstance(tag, str) and tag
         assert isinstance(step, int) and step >= 0
