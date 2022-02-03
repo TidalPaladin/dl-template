@@ -4,11 +4,12 @@
 from queue import PriorityQueue
 from typing import Any, Type
 
+import pandas as pd
 import pytest
 import torch
 from torchmetrics import F1, Accuracy, MetricCollection
 
-from project.metrics import MetricStateCollection, QueueStateCollection, StateCollection
+from project.metrics import DataFrameStateCollection, MetricStateCollection, QueueStateCollection, StateCollection
 from project.structs import Mode, State
 
 
@@ -222,3 +223,14 @@ class TestQueueStateCollection(BaseCollectionTest):
 
         for s, queue in col2.as_dict().items():
             assert queue.empty()
+
+
+class TableCollection(DataFrameStateCollection):
+    def __init__(self):
+        proto = pd.DataFrame(columns=["col1", "col2"])
+        super().__init__(proto)
+
+
+class TestDataFrameStateCollection(BaseCollectionTest):
+    CLS = TableCollection
+    VAL = pd.DataFrame(columns=["col1", "col2"])

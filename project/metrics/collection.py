@@ -6,11 +6,14 @@ from dataclasses import dataclass, field
 from queue import PriorityQueue
 from typing import Dict, Generic, List, Optional, Sequence, Set, Tuple, TypeVar, Union, cast
 
+import pandas as pd
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torchmetrics as tm
 from torchmetrics import MetricCollection
+
+from combustion.lightning.callbacks import DistributedDataFrame
 
 from ..structs import Mode, State
 
@@ -29,7 +32,6 @@ class StateCollection(ABC, Generic[U]):
         r"""Register a :class:`MetricCollection` for a given :class:`State`."""
         ...
 
-    @abstractmethod
     def reset(
         self: T,
         specific_states: Sequence[State] = [],
@@ -47,6 +49,14 @@ class StateCollection(ABC, Generic[U]):
         Returns:
             Reference to reset self
         """
+        for state, value in self.as_dict().items():
+            if specific_states and state not in specific_states:
+                continue
+            elif specific_modes and state.mode not in specific_modes:
+                continue
+            self.remove_state(state)
+            self.register(state)
+
         return self
 
     @abstractmethod
@@ -325,3 +335,52 @@ class QueueStateCollection(StateCollection[PriorityQueue[PrioritizedItem[P]]]):
         for state, val in other.as_dict().items():
             output.set_state(state, val)
         return output
+
+
+class DataFrameStateCollection(StateCollection[DistributedDataFrame]):
+    r"""Container for storing :class:`nn.Module` instances that are associated with a given
+    :class:`State`. Inherits from :class:`nn.ModuleDict` to support stateful attachment of
+    contained :class:`nn.Module` instances.
+    """
+    _lookup: Dict[State, DistributedDataFrame]
+
+    def __init__(self, proto: Optional[pd.DataFrame] = None):
+        super().__init__()
+        self._lookup = {}
+        self._proto = proto if proto is not None else None
+
+    def update(self, state: State, val: pd.DataFrame) -> None:
+        r"""Concatenates the dataframe ``val`` with the current dataframe for state ``state``."""
+        old_df = self.get_state(state)
+        df = DistributedDataFrame(pd.concat([old_df, val]))
+        self.set_state(state, df)
+
+    def set_state(self, state: State, val: DistributedDataFrame) -> None:
+        r"""Associates a collection ``val`` with state ``State``."""
+        self._lookup[state] = val
+
+    def get_state(self, state: State) -> DistributedDataFrame:
+        r"""Returns the collection associated with state ``State``."""
+        if state not in self.states:
+            raise KeyError(str(state))
+        return self._lookup[state]
+
+    def remove_state(self, state: State) -> None:
+        r"""Removes state ``state`` if present."""
+        if state not in self.states:
+            return
+        del self._lookup[state]
+
+    @property
+    def states(self) -> Set[State]:
+        r"""Returns the set of registered ``State`` keys."""
+        return set(self._lookup.keys())
+
+    def register(self, state: State, proto: Optional[pd.DataFrame] = None):
+        if state in self.states:
+            return
+        proto = proto or self._proto
+        if proto is None:
+            raise ValueError("`proto` must be provided if it was not given in constructor")
+        ddf_proto = DistributedDataFrame(proto)
+        self.set_state(state, ddf_proto)

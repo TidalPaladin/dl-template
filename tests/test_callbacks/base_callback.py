@@ -155,8 +155,8 @@ class BaseCallbackTest:
             pytest.param(State(Mode.TEST, "bar")),
         ],
     )
-    def test_register(self, callback, pl_module, state):
-        callback.register(state, pl_module)
+    def test_register(self, callback, pl_module, state, example, prediction):
+        callback.register(state, pl_module, example, prediction)
 
     def test_reset(self, callback):
         callback.reset()

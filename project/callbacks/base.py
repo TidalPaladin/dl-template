@@ -80,7 +80,13 @@ class LoggingCallback(Callback, ABC, Generic[I, O]):
         ...
 
     @abstractmethod
-    def register(self, state: State, pl_module: BaseModel) -> None:
+    def register(
+        self,
+        state: State,
+        pl_module: BaseModel,
+        example: I,
+        prediction: O,
+    ) -> None:
         r"""Performs any setup/registration needed for a given state. This method will only be
         called if ``state.mode in self.modes``. It may be called multiple times for a given state.
         """
@@ -144,7 +150,7 @@ class LoggingCallback(Callback, ABC, Generic[I, O]):
             raise TypeError(f"Expected `outputs` to be type `Prediction`, found {type(outputs)}")
         if not isinstance(batch, Example):
             raise TypeError(f"Expected `batch` to be type `Example`, found {type(batch)}")
-        self.register(state, pl_module)
+        self.register(state, pl_module, batch, outputs)
         self._on_batch_end(trainer, pl_module, outputs, batch, batch_idx, *args, **kwargs)
 
     @unpack_dict
@@ -165,7 +171,7 @@ class LoggingCallback(Callback, ABC, Generic[I, O]):
             raise TypeError(f"Expected `outputs` to be type `Prediction`, found {type(outputs)}")
         if not isinstance(batch, Example):
             raise TypeError(f"Expected `batch` to be type `Example`, found {type(batch)}")
-        self.register(state, pl_module)
+        self.register(state, pl_module, batch, outputs)
         self._on_batch_end(trainer, pl_module, outputs, batch, batch_idx, *args, **kwargs)
 
     @unpack_dict
@@ -186,7 +192,7 @@ class LoggingCallback(Callback, ABC, Generic[I, O]):
             raise TypeError(f"Expected `outputs` to be type `Prediction`, found {type(outputs)}")
         if not isinstance(batch, Example):
             raise TypeError(f"Expected `batch` to be type `Example`, found {type(batch)}")
-        self.register(state, pl_module)
+        self.register(state, pl_module, batch, outputs)
         self._on_batch_end(trainer, pl_module, outputs, batch, batch_idx, *args, **kwargs)
 
     def on_train_epoch_begin(self, *args, **kwargs):

@@ -21,6 +21,7 @@ requirements = [
     "wandb",
     "scikit-learn",
     "jsonargparse[signatures]",
+    "pandas",
 ]
 
 
