@@ -144,7 +144,7 @@ class LoggingCallback(Callback, ABC, Generic[I, O]):
         **kwargs,
     ):
         state = pl_module.state
-        if state.mode not in self.modes:
+        if not state.sanity_checking and state.mode not in self.modes:
             return
         if not isinstance(outputs, Prediction):
             raise TypeError(f"Expected `outputs` to be type `Prediction`, found {type(outputs)}")
@@ -165,7 +165,7 @@ class LoggingCallback(Callback, ABC, Generic[I, O]):
         **kwargs,
     ):
         state = pl_module.state
-        if state.mode not in self.modes:
+        if not state.sanity_checking and state.mode not in self.modes:
             return
         if not isinstance(outputs, Prediction):
             raise TypeError(f"Expected `outputs` to be type `Prediction`, found {type(outputs)}")
@@ -186,7 +186,7 @@ class LoggingCallback(Callback, ABC, Generic[I, O]):
         **kwargs,
     ):
         state = pl_module.state
-        if state.mode not in self.modes:
+        if not state.sanity_checking and state.mode not in self.modes:
             return
         if not isinstance(outputs, Prediction):
             raise TypeError(f"Expected `outputs` to be type `Prediction`, found {type(outputs)}")
@@ -221,6 +221,7 @@ class LoggingCallback(Callback, ABC, Generic[I, O]):
 
     def on_sanity_check_end(self, trainer: pl.Trainer, pl_module: BaseModel):
         pl_module.state = pl_module.state.set_sanity_checking(False)
+        self.reset()
 
     @rank_zero_only
     def wrapped_log(
@@ -340,13 +341,17 @@ class QueuedLoggingCallback(LoggingCallback, ABC, Generic[I, O]):
         mode: Mode,
     ):
         # discard queue at epoch end when using a flush_interval
-        if self.flush_interval:
+        if self.flush_interval and not pl_module.state.sanity_checking:
             self.reset(specific_modes=[mode])
 
         # otherwise flush and log the queue
         else:
             step = trainer.global_step
             self.flush_queues(pl_module, mode, step)
+
+    def on_sanity_check_end(self, trainer: pl.Trainer, pl_module: BaseModel):
+        self.flush_queues(pl_module, pl_module.state.mode, trainer.global_step)
+        super().on_sanity_check_end(trainer, pl_module)
 
     def flush_queues(self, pl_module: BaseModel, mode: Mode, step: int):
         # ensure we only flush queues for the currently ending state
@@ -393,6 +398,15 @@ class QueuedLoggingCallback(LoggingCallback, ABC, Generic[I, O]):
             insertion = item is not other
         else:
             insertion = True
+
+        # move to CPU and detach
+        # NOTE: calling x.cpu().detach() doesn't seem to work right.
+        # error is not reproducible in combustion
+        e, p = item.item
+        e = example.detach().to("cpu", copy=True, non_blocking=True)
+        p = pred.detach().to("cpu", copy=True, non_blocking=True)
+        item.item = (e, p)
+
         queue.put(item)
         return insertion
 
