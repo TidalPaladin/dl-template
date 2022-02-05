@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 import project
+from combustion.testing import cuda_or_skip
 
 
 @pytest.fixture
@@ -37,6 +38,7 @@ def test_dummy_dataset(project_root, output_path):
         "--data=project.data.DummyDataModule",
         "--trainer.fast_dev_run=True",
         "--trainer.gpus=null",
+        "--trainer.strategy=null",
         "--trainer.precision=32",
     ]
     runpy.run_module("project", run_name="__main__", alter_sys=True)
@@ -51,13 +53,22 @@ def test_cpu_dev_run(project_root, output_path):
         f"--config={config_file}",
         "--trainer.fast_dev_run=True",
         "--trainer.gpus=null",
+        "--trainer.strategy=null",
         "--trainer.precision=32",
     ]
     runpy.run_module("project", run_name="__main__", alter_sys=True)
 
 
+@cuda_or_skip
 @pytest.mark.ci_skip
 def test_gpu_dev_run(project_root, output_path):
     config_file = Path(project_root, "config.yaml")
-    sys.argv = [sys.argv[0], "fit", f"--config={config_file}", "--trainer.fast_dev_run=True"]
+    sys.argv = [
+        sys.argv[0],
+        "fit",
+        f"--config={config_file}",
+        "--trainer.fast_dev_run=True",
+        "--trainer.gpus=1",
+        "--trainer.strategy=null",
+    ]
     runpy.run_module("project", run_name="__main__", alter_sys=True)
