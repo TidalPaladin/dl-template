@@ -27,7 +27,7 @@ class Prediction(TensorDataclass, BatchMixin):
 
     @abstractproperty
     def probs(self) -> Tensor:
-        return self.logits.softmax(dim=-1)
+        return self.logits.float().softmax(dim=-1)
 
     @property
     def is_batched(self) -> bool:
@@ -52,14 +52,14 @@ class BinaryPrediction(Prediction):
 
     @property
     def probs(self) -> Tensor:
-        return self.logits.sigmoid()
+        return self.logits.float().sigmoid()
 
     def classes(self, threshold: float) -> Tensor:
         return (self.probs >= threshold).long()
 
     @property
     def entropy(self) -> Tensor:
-        return Entropy.compute_binary_entropy(self.logits, from_logits=True)
+        return Entropy.compute_binary_entropy(self.logits.float(), from_logits=True)
 
 
 @dataclass(repr=False, eq=False)
@@ -72,7 +72,7 @@ class MultiClassPrediction(Prediction):
 
     @property
     def probs(self) -> Tensor:
-        return self.logits.softmax(dim=-1)
+        return self.logits.float().softmax(dim=-1)
 
     @property
     def classes(self) -> Tensor:
@@ -84,7 +84,7 @@ class MultiClassPrediction(Prediction):
 
     @property
     def entropy(self) -> Tensor:
-        return Entropy.compute_categorical_entropy(self.logits, from_logits=True)
+        return Entropy.compute_categorical_entropy(self.logits.float(), from_logits=True)
 
     def probs_for_class(self, classes: Tensor) -> Tensor:
         if (ndim_diff := self.logits.ndim - classes.ndim) == 1:
