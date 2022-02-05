@@ -16,9 +16,9 @@ class BaseTest:
     def seed(self):
         torch.random.manual_seed(42)
 
-    @pytest.fixture
-    def logits(self):
-        return torch.rand(1)
+    @pytest.fixture(params=[torch.float, torch.half])
+    def logits(self, request):
+        return torch.rand(1, dtype=request.param)
 
     def test_construct(self, logits):
         p = self.CLS(logits)
@@ -76,13 +76,13 @@ class TestBinaryPrediction(BaseTest):
 
     def test_probs(self, logits):
         ex = self.CLS(logits)
-        assert torch.allclose(ex.probs, logits.sigmoid())
+        assert torch.allclose(ex.probs, logits.float().sigmoid())
 
     @pytest.mark.parametrize("threshold", [0.1, 0.5, 0.8])
     def test_classes(self, logits, threshold):
         ex = self.CLS(logits)
         cls = ex.classes(threshold=threshold)
-        expected = (logits.sigmoid() >= threshold).long()
+        expected = (logits.float().sigmoid() >= threshold).long()
         assert torch.allclose(cls, expected)
 
     def test_entropy(self, logits):
@@ -94,13 +94,13 @@ class TestBinaryPrediction(BaseTest):
 class TestMultiClassPrediction(BaseTest):
     CLS: Type[MultiClassPrediction] = MultiClassPrediction
 
-    @pytest.fixture
-    def logits(self):
-        return torch.rand(3)
+    @pytest.fixture(params=[torch.float, torch.half])
+    def logits(self, request):
+        return torch.rand(3, dtype=request.param)
 
     def test_probs(self, logits):
         ex = self.CLS(logits)
-        assert torch.allclose(ex.probs, logits.softmax(dim=-1))
+        assert torch.allclose(ex.probs, logits.float().softmax(dim=-1))
 
     def test_classes(self, logits):
         ex = self.CLS(logits)
@@ -123,5 +123,5 @@ class TestMultiClassPrediction(BaseTest):
 
         ex = self.CLS(logits)
         scores = ex.probs_for_class(classes)
-        expected = logits.softmax(dim=-1)[..., clazz]
+        expected = logits.float().softmax(dim=-1)[..., clazz]
         assert torch.allclose(scores, expected)
