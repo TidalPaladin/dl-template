@@ -7,6 +7,7 @@ from typing import Any, ClassVar, Dict, Generic, Iterator, Optional, Tuple, Type
 
 import matplotlib.pyplot as plt
 import pytorch_lightning as pl
+import torch
 import torch.nn.functional as F
 from pytorch_lightning.loggers import LightningLoggerBase, WandbLogger
 from pytorch_lightning.utilities import rank_zero_only
@@ -63,9 +64,15 @@ class BaseModel(pl.LightningModule, Generic[I, O, L]):
         }
         return MetricCollection(metrics, prefix=state.prefix).to(self.device)
 
+    @torch.no_grad()
     def log_loss(self, loss: L) -> None:
         name = self.state.with_postfix("total_loss")
         self._log_loss(name, loss.total_loss)
+
+    @torch.no_grad()
+    def log_metrics(self, example: I, pred: O) -> None:
+        self.state_metrics.update(self.state, example, pred)
+        self.state_metrics.log(self.state, self)
 
     def configure_optimizers(self) -> Dict[str, Any]:
         assert self.optimizer_init
@@ -98,18 +105,17 @@ class BaseModel(pl.LightningModule, Generic[I, O, L]):
         loss = self.compute_loss(example, pred)
         assert isinstance(loss, Loss), "compute_loss should return a Loss instance"
 
-        # update metrics
-        self.state_metrics.update(self.state, example, pred)
-
         # loss and metric logging
         self.log_loss(loss)
-        self.state_metrics.log(self.state, self)
+        self.log_metrics(example, pred)
 
         return pred, loss
 
     def training_step(self, example: I, batch_idx: int, *args):
         pred, loss = self.step(example, batch_idx)
-        return {"pred": pred.detach(), "loss": loss.total_loss}
+        total_loss = loss.total_loss
+        assert total_loss.grad_fn, "training loss should have a grad_fn"
+        return {"pred": pred.detach(), "loss": total_loss}
 
     def validation_step(self, example: I, batch_idx: int, *args):
         pred, loss = self.step(example, batch_idx)
