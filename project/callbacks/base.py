@@ -144,7 +144,7 @@ class LoggingCallback(Callback, ABC, Generic[I, O]):
         **kwargs,
     ):
         state = pl_module.state
-        if state.mode not in self.modes:
+        if not state.sanity_checking and state.mode not in self.modes:
             return
         if not isinstance(outputs, Prediction):
             raise TypeError(f"Expected `outputs` to be type `Prediction`, found {type(outputs)}")
@@ -165,7 +165,7 @@ class LoggingCallback(Callback, ABC, Generic[I, O]):
         **kwargs,
     ):
         state = pl_module.state
-        if state.mode not in self.modes:
+        if not state.sanity_checking and state.mode not in self.modes:
             return
         if not isinstance(outputs, Prediction):
             raise TypeError(f"Expected `outputs` to be type `Prediction`, found {type(outputs)}")
@@ -186,7 +186,7 @@ class LoggingCallback(Callback, ABC, Generic[I, O]):
         **kwargs,
     ):
         state = pl_module.state
-        if state.mode not in self.modes:
+        if not state.sanity_checking and state.mode not in self.modes:
             return
         if not isinstance(outputs, Prediction):
             raise TypeError(f"Expected `outputs` to be type `Prediction`, found {type(outputs)}")
@@ -221,6 +221,7 @@ class LoggingCallback(Callback, ABC, Generic[I, O]):
 
     def on_sanity_check_end(self, trainer: pl.Trainer, pl_module: BaseModel):
         pl_module.state = pl_module.state.set_sanity_checking(False)
+        self.reset()
 
     @rank_zero_only
     def wrapped_log(
@@ -390,13 +391,21 @@ class QueuedLoggingCallback(LoggingCallback, ABC, Generic[I, O]):
         if priority is None:
             return False
         priority = priority if not self.negate_priority else -1 * priority
-        item = PrioritizedItem(priority, (example.cpu().detach(), pred.cpu().detach()))
+        item = PrioritizedItem(priority, (example, pred))
         if queue.full():
             other = queue.get()
             item = max(item, other)
             insertion = item is not other
         else:
             insertion = True
+
+        # move to CPU and detach
+        # NOTE: calling x.cpu().detach() doesn't seem to work right.
+        # error is not reproducible in combustion
+        e, p = item.item
+        e = example.detach().to("cpu", copy=True, non_blocking=True)
+        p = pred.detach().to("cpu", copy=True, non_blocking=True)
+        item.item = (e, p)
 
         queue.put(item)
         return insertion

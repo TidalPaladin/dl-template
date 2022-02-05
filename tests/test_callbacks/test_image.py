@@ -246,3 +246,27 @@ class TestImageLoggingCallback(BaseCallbackTest):
 
         logger.experiment.log.assert_called()
         assert 0 < logger.experiment.log.call_count <= queue_size
+
+    def test_cpu_detach_on_enqueue(self, cuda):
+        queue_size = 32
+        device = "cuda:0" if cuda else "cpu"
+
+        example = Example(
+            img=torch.rand(3, 32, 32, device=device),
+            label=torch.tensor(1.0, device=device).view(1),
+        )
+        pred = BinaryPrediction(torch.rand(1, requires_grad=True, device=device))
+
+        cb = ImageLoggingCallback("img", queue_size=queue_size)
+        state = State(Mode.TEST)
+        cb.register(state)
+        queue = cb.queues.get_state(state)
+        cb.enqueue(example, pred, queue=queue)
+
+        while not queue.empty():
+            item = queue.get()
+            e, p = item.item
+            assert e.device == torch.device("cpu")
+            assert p.device == torch.device("cpu")
+            assert not e.requires_grad
+            assert not p.requires_grad
