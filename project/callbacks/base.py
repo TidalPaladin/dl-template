@@ -340,13 +340,17 @@ class QueuedLoggingCallback(LoggingCallback, ABC, Generic[I, O]):
         mode: Mode,
     ):
         # discard queue at epoch end when using a flush_interval
-        if self.flush_interval:
+        if self.flush_interval and not pl_module.state.sanity_checking:
             self.reset(specific_modes=[mode])
 
         # otherwise flush and log the queue
         else:
             step = trainer.global_step
             self.flush_queues(pl_module, mode, step)
+
+    def on_sanity_check_end(self, trainer: pl.Trainer, pl_module: BaseModel):
+        self.flush_queues(pl_module, pl_module.state.mode, trainer.global_step)
+        super().on_sanity_check_end(trainer, pl_module)
 
     def flush_queues(self, pl_module: BaseModel, mode: Mode, step: int):
         # ensure we only flush queues for the currently ending state
@@ -386,13 +390,14 @@ class QueuedLoggingCallback(LoggingCallback, ABC, Generic[I, O]):
         if priority is None:
             return False
         priority = priority if not self.negate_priority else -1 * priority
-        item = PrioritizedItem(priority, (example, pred))
+        item = PrioritizedItem(priority, (example.cpu().detach(), pred.cpu().detach()))
         if queue.full():
             other = queue.get()
             item = max(item, other)
             insertion = item is not other
         else:
             insertion = True
+
         queue.put(item)
         return insertion
 
