@@ -3,12 +3,13 @@
 
 from abc import abstractmethod
 from functools import partial
-from typing import Any, ClassVar, Dict, Generic, Iterator, Optional, Tuple, Type, cast
+from typing import Any, ClassVar, Dict, Generic, Iterator, List, Optional, Tuple, Type, cast
 
 import matplotlib.pyplot as plt
 import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
+from pytorch_lightning.callbacks import Callback
 from pytorch_lightning.loggers import LightningLoggerBase, WandbLogger
 from pytorch_lightning.utilities import rank_zero_only
 from pytorch_lightning.utilities.cli import instantiate_class
@@ -18,6 +19,7 @@ from torchmetrics import MetricCollection
 
 from combustion.util import MISSING
 
+from ..callbacks.wandb import WandBCheckpointCallback
 from ..data import NamedDataModuleMixin
 from ..metrics import UCE, Accuracy, Entropy, MetricStateCollection
 from ..structs import Example, I, L, Loss, Mode, O, Prediction, State
@@ -294,3 +296,6 @@ class BaseModel(pl.LightningModule, Generic[I, O, L]):
         # apply the patch
         logger.experiment.log = wrapped_log
         return logger
+
+    def configure_callbacks(self) -> List[Callback]:
+        return [WandBCheckpointCallback()]

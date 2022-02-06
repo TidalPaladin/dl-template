@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Generic, Iterable, Union
+from typing import TYPE_CHECKING, Any, Dict, ForwardRef, Generic, Iterable, Union
 
 import pytorch_lightning as pl
 import torch
@@ -12,9 +12,14 @@ from pytorch_lightning.utilities.cli import CALLBACK_REGISTRY
 from torchmetrics import MetricCollection
 
 from ..metrics import ConfusionMatrix, ErrorAtUncertainty, MetricStateCollection
-from ..model import BaseModel
 from ..structs import I, Mode, O, State
 from .base import ALL_MODES, LoggingCallback, ModeGroup
+
+
+if TYPE_CHECKING:
+    from ..model.base import BaseModel
+else:
+    BaseModel = ForwardRef("BaseModel")
 
 
 class MetricLoggingCallback(LoggingCallback, ABC, Generic[I, O]):
