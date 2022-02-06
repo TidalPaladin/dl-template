@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from abc import abstractmethod
-from typing import Iterable, Optional
+from typing import TYPE_CHECKING, ForwardRef, Iterable, Optional
 
 import pandas as pd
 import pytorch_lightning as pl
@@ -11,9 +11,14 @@ import wandb
 from combustion.lightning.callbacks import DistributedDataFrame
 
 from ..metrics import DataFrameStateCollection
-from ..model import BaseModel
 from ..structs import Example, I, Mode, O, Prediction, State
 from .base import LoggingCallback, ModeGroup
+
+
+if TYPE_CHECKING:
+    from ..model.base import BaseModel
+else:
+    BaseModel = ForwardRef("BaseModel")
 
 
 class TableCallback(LoggingCallback[I, O]):

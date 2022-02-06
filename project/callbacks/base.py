@@ -4,7 +4,7 @@
 from abc import ABC, abstractclassmethod, abstractmethod
 from functools import wraps
 from queue import PriorityQueue
-from typing import Any, Dict, Generic, Iterable, Iterator, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, ForwardRef, Generic, Iterable, Iterator, Optional, Tuple, Union
 
 import pytorch_lightning as pl
 import torch
@@ -12,8 +12,13 @@ from pytorch_lightning.callbacks import Callback
 from pytorch_lightning.utilities import rank_zero_only
 
 from ..metrics import PrioritizedItem, QueueStateCollection
-from ..model.base import BaseModel
 from ..structs import Example, I, Mode, ModeGroup, O, Prediction, State
+
+
+if TYPE_CHECKING:
+    from ..model.base import BaseModel
+else:
+    BaseModel = ForwardRef("BaseModel")
 
 
 ALL_MODES: ModeGroup = ["train", "val", "test"]
@@ -232,7 +237,7 @@ class LoggingCallback(Callback, ABC, Generic[I, O]):
         step: int,
     ):
         r"""Wrapper that calls self.log only on rank zero and when not sanity checking"""
-        assert isinstance(pl_module, BaseModel)
+        assert hasattr(pl_module, "state") and isinstance(pl_module.state, State)
         assert isinstance(tag, str) and tag
         assert isinstance(step, int) and step >= 0
         if not pl_module.state.sanity_checking:
