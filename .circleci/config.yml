@@ -21,7 +21,7 @@ commands:
 jobs:
     check_code_quality:
         docker:
-            - image: circleci/python:3.8
+            - image: circleci/python:3.10
         steps:
             - checkout
             - run: 
@@ -30,7 +30,7 @@ jobs:
 
     run_tests:
         docker:
-            - image: circleci/python:3.8
+            - image: circleci/python:3.10
         steps:
             - checkout
             - run: 
