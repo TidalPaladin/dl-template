@@ -69,7 +69,7 @@ def install(version):
         packages=find_packages(),
         install_requires=requirements,
         extras_require=extras,
-        python_requires=">=3.7.0",
+        python_requires=">=3.10.0",
         classifiers=[
             "Intended Audience :: Developers",
             "Intended Audience :: Education",
