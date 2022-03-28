@@ -63,8 +63,8 @@ reset:
 	$(MAKE) clean-venv
 	$(MAKE) check
 
-run: $(CONFIG_FILE)
-	$(PYTHON) -m $(PROJECT)
+fit: $(CONFIG_FILE)
+	$(PYTHON) -m $(PROJECT) fit --config config.yaml
 
 style: $(VENV)/bin/requirements.quality.txt
 	$(PYTHON) -m autoflake -r -i --remove-all-unused-imports --remove-unused-variables $(QUALITY_DIRS)
