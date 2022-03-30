@@ -28,7 +28,7 @@ requirements = [
 extras = {}
 extras["test"] = ["pytest", "pytest-cov", "pytest-mock"]
 extras["dev"] = extras["test"]
-extras["vision"] = ["torchvision", "albumentations"]
+extras["vision"] = ["torchvision", "albumentations", "timm"]
 
 
 def write_version_info():

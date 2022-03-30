@@ -1,2 +1,3 @@
+git+https://github.com/rwightman/efficientdet-pytorch
 -e ./combustion[vision]
 -e .

@@ -21,7 +21,7 @@ from combustion.util import MISSING
 
 from ..callbacks.wandb import WandBCheckpointCallback
 from ..data import NamedDataModuleMixin
-from ..metrics import UCE, Accuracy, Entropy, MetricStateCollection
+from ..metrics import Accuracy, Entropy, MetricStateCollection
 from ..structs import Example, I, L, Loss, Mode, O, Prediction, State
 
 
@@ -33,7 +33,6 @@ class BaseModel(pl.LightningModule, Generic[I, O, L]):
 
     def __init__(
         self,
-        num_classes: int = 10,
         optimizer_init: dict = {},
         lr_scheduler_init: dict = {},
         lr_scheduler_interval: str = "epoch",
@@ -42,7 +41,6 @@ class BaseModel(pl.LightningModule, Generic[I, O, L]):
         super().__init__()
         self.state = State()
         self._batch_size = 4
-        self.num_classes = num_classes
         self.state_metrics = MetricStateCollection()
         self.optimizer_init = optimizer_init
         self.lr_scheduler_init = lr_scheduler_init
@@ -62,7 +60,6 @@ class BaseModel(pl.LightningModule, Generic[I, O, L]):
         metrics = {
             "accuracy": Accuracy(),
             "entropy": Entropy(),
-            "uce": UCE(num_bins=10, num_classes=self.num_classes, from_logits=True),
         }
         return MetricCollection(metrics, prefix=state.prefix).to(self.device)
 
