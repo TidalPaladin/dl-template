@@ -5,6 +5,7 @@ from abc import abstractmethod
 from typing import Tuple, TypeVar
 
 from torch import Tensor
+import torch
 
 
 T = TypeVar("T", bound="ResizeMixin")
@@ -35,15 +36,8 @@ class ResizeMixin:
 
     @staticmethod
     def _view_for_resize(img: Tensor) -> Tensor:
-        H, W = img.shape[-2:]
-        if img.ndim == 2:
-            return img.view(1, 1, H, W)
-        elif img.ndim == 3:
-            return img.view(1, -1, H, W)
-        elif img.ndim == 4:
-            return img
-        else:
-            raise ValueError(f"Unexpected image shape {img.shape}")
+        size = torch.broadcast_shapes(img.shape, (1, 1, 1, 1))
+        return img.view(*size)
 
     @staticmethod
     def _view_as_orig(img: Tensor, orig: Tensor) -> Tensor:

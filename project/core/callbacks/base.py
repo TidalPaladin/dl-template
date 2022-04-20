@@ -4,56 +4,54 @@
 from abc import ABC, abstractclassmethod, abstractmethod
 from functools import wraps
 from queue import PriorityQueue
-from typing import TYPE_CHECKING, Any, Dict, ForwardRef, Generic, Iterable, Iterator, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, ForwardRef, Generic, Iterable, Iterator, Optional, Tuple, Union, TypeVar, Callable, ParamSpec
 
 import pytorch_lightning as pl
 import torch
+from torch import Tensor
 from pytorch_lightning.callbacks import Callback
 from pytorch_lightning.utilities import rank_zero_only
+from pytorch_lightning.utilities.apply_func import apply_to_collection, move_data_to_device
+from functools import wraps
+
+from flash.core.utilities.stages import RunningStage
+from flash.core.model import OutputKeys
+from flash.core.data.io.input import DataKeys
 
 from ..metrics import PrioritizedItem, QueueStateCollection
 from ..structs import Example, I, Mode, ModeGroup, O, Prediction, State
+from ..types import STAGE_TYPE, InputDict, OutputDict
 
 
-if TYPE_CHECKING:
-    from ..model.base import BaseModel
-else:
-    BaseModel = ForwardRef("BaseModel")
+ALL_STAGES = {RunningStage.TRAINING, RunningStage.VALIDATING, RunningStage.TESTING}
 
 
-ALL_MODES: ModeGroup = ["train", "val", "test"]
+def cpu_detach(t: Tensor) -> Tensor:
+    return t.detach().to("cpu", copy=True, non_blocking=True)
 
 
-def unpack_dict(wrapped):
-    r""":class:`LightningModule` is required to return either a loss tensor or a dictionary
-    for automatic optimization. This decorator unpacks a returned dictionary by looking for a
-    :class:`Prediction` instance under the key `pred`
-    """
+P = ParamSpec("P")
 
-    @wraps(wrapped)
-    def func(
-        self,
-        trainer: pl.Trainer,
-        pl_module: BaseModel,
-        outputs: Dict[str, Any],
-        batch: Example,
-        batch_idx: int,
-        *args,
-        **kwargs,
-    ) -> None:
-        if isinstance(outputs, dict):
-            assert "pred" in outputs.keys(), "returned dictionary should contain key 'pred'"
-            pred = outputs["pred"]
-        elif isinstance(outputs, Prediction):
-            pred = outputs
-        elif not batch:
-            return
-        else:
-            raise TypeError(f"unpack_dict expects `outputs` to be dict or `Prediction`, got {type(outputs)}")
-        assert isinstance(pred, Prediction)
-        return wrapped(self, trainer, pl_module, pred, batch, batch_idx, *args, **kwargs)
 
-    return func
+def provides(stage: RunningStage) -> Callable:
+    def decorator(f: Callable[P, None]) -> Callable[P, None]:
+        @wraps(f)
+        def wrapper(
+            self: "LoggingCallback", 
+            trainer: pl.Trainer,
+            pl_module: pl.LightningModule,
+            outputs: OutputDict,
+            batch: InputDict,
+            batch_idx: int,
+            *args, 
+            **kwargs,
+        ) -> None:
+            if stage not in self.stages:
+                return
+            self.register(stage, pl_module, batch, outputs)
+            self._on_batch_end(stage, trainer, pl_module, outputs, batch, batch_idx, *args, **kwargs)
+        return wrapper
+    return decorator
 
 
 class LoggingCallback(Callback, ABC, Generic[I, O]):
@@ -69,9 +67,9 @@ class LoggingCallback(Callback, ABC, Generic[I, O]):
             Specific modes for wich this callback should run
     """
 
-    def __init__(self, name: str, modes: ModeGroup = ALL_MODES):
+    def __init__(self, name: str, stages: Iterable[STAGE_TYPE] = ALL_STAGES):
         super().__init__()
-        self.modes = tuple(Mode.from_group(modes))
+        self.stages = set(RunningStage(s) for s in stages)
         self.name = name
 
     @abstractmethod
@@ -80,30 +78,31 @@ class LoggingCallback(Callback, ABC, Generic[I, O]):
         ...
 
     @abstractmethod
-    def reset(self, specific_states: Iterable[State] = [], specific_modes: Iterable[Mode] = []):
+    def reset(self, stages: Iterable[RunningStage] = []):
         r"""Reset the state of this logging callback"""
         ...
 
     @abstractmethod
     def register(
         self,
-        state: State,
-        pl_module: BaseModel,
-        example: I,
-        prediction: O,
+        stage: RunningStage,
+        pl_module: pl.LightningModule,
+        example: InputDict,
+        prediction: OutputDict,
     ) -> None:
         r"""Performs any setup/registration needed for a given state. This method will only be
-        called if ``state.mode in self.modes``. It may be called multiple times for a given state.
+        called if ``stage in self.stages``. It may be called multiple times for a given state.
         """
         ...
 
     @abstractmethod
     def _on_batch_end(
         self,
+        stage: RunningStage,
         trainer: pl.Trainer,
-        pl_module: BaseModel,
-        outputs: O,
-        batch: I,
+        pl_module: pl.LightningModule,
+        outputs: OutputDict,
+        batch: InputDict,
         batch_idx: int,
         *args,
         **kwargs,
@@ -114,8 +113,8 @@ class LoggingCallback(Callback, ABC, Generic[I, O]):
     def _on_epoch_end(
         self,
         trainer: pl.Trainer,
-        pl_module: BaseModel,
-        mode: Mode,
+        pl_module: pl.LightningModule,
+        stage: RunningStage,
     ):
         r"""Handles callback logic when epoch ends."""
         ...
@@ -123,7 +122,7 @@ class LoggingCallback(Callback, ABC, Generic[I, O]):
     def log_target(
         self,
         target: Any,
-        pl_module: BaseModel,
+        pl_module: pl.LightningModule,
         tag: str,
         step: int,
     ):
@@ -137,102 +136,47 @@ class LoggingCallback(Callback, ABC, Generic[I, O]):
         target_dict = {"trainer/global_step": step, tag: target}
         pl_module.logger.experiment.log(target_dict, commit=False)
 
-    @unpack_dict
-    def on_train_batch_end(
-        self,
-        trainer: pl.Trainer,
-        pl_module: BaseModel,
-        outputs: O,
-        batch: I,
-        batch_idx: int,
-        *args,
-        **kwargs,
-    ):
-        state = pl_module.state
-        if not state.sanity_checking and state.mode not in self.modes:
-            return
-        if not isinstance(outputs, Prediction):
-            raise TypeError(f"Expected `outputs` to be type `Prediction`, found {type(outputs)}")
-        if not isinstance(batch, Example):
-            raise TypeError(f"Expected `batch` to be type `Example`, found {type(batch)}")
-        self.register(state, pl_module, batch, outputs)
-        self._on_batch_end(trainer, pl_module, outputs, batch, batch_idx, *args, **kwargs)
+    @provides(RunningStage.TRAINING)
+    def on_train_batch_end(self, *args, **kwargs):
+        ...
 
-    @unpack_dict
-    def on_validation_batch_end(
-        self,
-        trainer: pl.Trainer,
-        pl_module: BaseModel,
-        outputs: O,
-        batch: I,
-        batch_idx: int,
-        *args,
-        **kwargs,
-    ):
-        state = pl_module.state
-        if not state.sanity_checking and state.mode not in self.modes:
-            return
-        if not isinstance(outputs, Prediction):
-            raise TypeError(f"Expected `outputs` to be type `Prediction`, found {type(outputs)}")
-        if not isinstance(batch, Example):
-            raise TypeError(f"Expected `batch` to be type `Example`, found {type(batch)}")
-        self.register(state, pl_module, batch, outputs)
-        self._on_batch_end(trainer, pl_module, outputs, batch, batch_idx, *args, **kwargs)
+    @provides(RunningStage.VALIDATING)
+    def on_validation_batch_end(self, *args, **kwargs):
+        ...
 
-    @unpack_dict
-    def on_test_batch_end(
-        self,
-        trainer: pl.Trainer,
-        pl_module: BaseModel,
-        outputs: O,
-        batch: I,
-        batch_idx: int,
-        *args,
-        **kwargs,
-    ):
-        state = pl_module.state
-        if not state.sanity_checking and state.mode not in self.modes:
-            return
-        if not isinstance(outputs, Prediction):
-            raise TypeError(f"Expected `outputs` to be type `Prediction`, found {type(outputs)}")
-        if not isinstance(batch, Example):
-            raise TypeError(f"Expected `batch` to be type `Example`, found {type(batch)}")
-        self.register(state, pl_module, batch, outputs)
-        self._on_batch_end(trainer, pl_module, outputs, batch, batch_idx, *args, **kwargs)
+    @provides(RunningStage.TESTING)
+    def on_test_batch_end(self, *args, **kwargs):
+        ...
 
     def on_train_epoch_begin(self, *args, **kwargs):
-        self.reset(specific_modes=[Mode.TRAIN])
+        self.reset(stages=[RunningStage.TRAINING])
         assert len(self) == 0, "No items should be pending logging after reset"
 
     def on_validation_epoch_begin(self, *args, **kwargs):
-        self.reset(specific_modes=[Mode.VAL])
+        self.reset(stages=[RunningStage.VALIDATING])
         assert len(self) == 0, "No items should be pending logging after reset"
 
     def on_test_epoch_begin(self, *args, **kwargs):
-        self.reset(specific_modes=[Mode.TEST])
+        self.reset(stages=[RunningStage.TESTING])
         assert len(self) == 0, "No items should be pending logging after reset"
 
     def on_train_epoch_end(self, *args, **kwargs):
-        self._on_epoch_end(*args, **kwargs, mode=Mode.TRAIN)
+        self._on_epoch_end(*args, **kwargs, stage=RunningStage.TRAINING)
 
     def on_validation_epoch_end(self, *args, **kwargs):
-        self._on_epoch_end(*args, **kwargs, mode=Mode.VAL)
+        self._on_epoch_end(*args, **kwargs, stage=RunningStage.VALIDATING)
 
     def on_test_epoch_end(self, *args, **kwargs):
-        self._on_epoch_end(*args, **kwargs, mode=Mode.TEST)
+        self._on_epoch_end(*args, **kwargs, stage=RunningStage.TESTING)
 
-    def on_sanity_check_start(self, trainer: pl.Trainer, pl_module: BaseModel):
-        pl_module.state = pl_module.state.set_sanity_checking(True)
-
-    def on_sanity_check_end(self, trainer: pl.Trainer, pl_module: BaseModel):
-        pl_module.state = pl_module.state.set_sanity_checking(False)
+    def on_sanity_check_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
         self.reset()
 
     @rank_zero_only
     def wrapped_log(
         self,
         target: Any,
-        pl_module: BaseModel,
+        pl_module: pl.LightningModule,
         tag: str,
         step: int,
     ):
@@ -277,18 +221,18 @@ class QueuedLoggingCallback(LoggingCallback, ABC, Generic[I, O]):
         self,
         name: str,
         queue_size: int,
-        modes: ModeGroup = ALL_MODES,
+        stages: Iterable[STAGE_TYPE] = ALL_STAGES,
         flush_interval: int = 0,
         negate_priority: bool = False,
     ):
-        super().__init__(name, modes)
+        super().__init__(name, stages)
         self.queue_size = queue_size
         self.flush_interval = flush_interval
         self.queues = QueueStateCollection()
         self.negate_priority = negate_priority
 
     @abstractclassmethod
-    def get_priority(cls, example: I, pred: O) -> Optional[Union[int, float]]:
+    def get_priority(cls, example: InputDict, pred: OutputDict) -> Optional[Union[int, float]]:
         r"""Compute a priority for an example/prediction pair. When logging with a finite
         sized priority queue, only the ``len(queue)`` highest priority images will be logged.
         Typically priority would be assigned based on some metric (loss, entropy, error, etc.).
@@ -297,7 +241,7 @@ class QueuedLoggingCallback(LoggingCallback, ABC, Generic[I, O]):
         ...
 
     @abstractmethod
-    def prepare_target(self, example: I, pred: O) -> Any:
+    def prepare_target(self, example: InputDict, pred: OutputDict) -> Any:
         ...
 
     def __len__(self) -> int:
@@ -318,9 +262,9 @@ class QueuedLoggingCallback(LoggingCallback, ABC, Generic[I, O]):
     def _on_batch_end(
         self,
         trainer: pl.Trainer,
-        pl_module: BaseModel,
-        outputs: O,
-        batch: I,
+        pl_module: pl.LightningModule,
+        outputs: OutputDict,
+        batch: InputDict,
         batch_idx: int,
         *args,
         **kwargs,
@@ -342,8 +286,8 @@ class QueuedLoggingCallback(LoggingCallback, ABC, Generic[I, O]):
     def _on_epoch_end(
         self,
         trainer: pl.Trainer,
-        pl_module: BaseModel,
-        mode: Mode,
+        pl_module: pl.LightningModule,
+        stage: RunningStage,
     ):
         # discard queue at epoch end when using a flush_interval
         if self.flush_interval and not pl_module.state.sanity_checking:
@@ -354,11 +298,7 @@ class QueuedLoggingCallback(LoggingCallback, ABC, Generic[I, O]):
             step = trainer.global_step
             self.flush_queues(pl_module, mode, step)
 
-    def on_sanity_check_end(self, trainer: pl.Trainer, pl_module: BaseModel):
-        self.flush_queues(pl_module, pl_module.state.mode, trainer.global_step)
-        super().on_sanity_check_end(trainer, pl_module)
-
-    def flush_queues(self, pl_module: BaseModel, mode: Mode, step: int):
+    def flush_queues(self, pl_module: pl.LightningModule, stage: RunningStage, step: int):
         # ensure we only flush queues for the currently ending state
         queues_to_flush: Dict[State, PriorityQueue] = {
             state: queue for state, queue in self.queues.as_dict().items() if state.mode == mode
@@ -371,13 +311,11 @@ class QueuedLoggingCallback(LoggingCallback, ABC, Generic[I, O]):
             self.wrapped_log(targets, pl_module, tag, step)
 
     @torch.no_grad()
-    def enqueue(self, example: I, pred: O, queue: PriorityQueue) -> bool:
+    def enqueue(self, example: InputDict, pred: OutputDict, queue: PriorityQueue) -> bool:
         r"""Enqueue an example/prediction pair to a given queue"""
         assert isinstance(queue, PriorityQueue)
-        assert example.is_batched == pred.is_batched
-        assert len(example) == len(pred)
 
-        if not example.has_label:
+        if DataKeys.TARGET not in example:
             return False
 
         # recurse on batched input
@@ -405,11 +343,9 @@ class QueuedLoggingCallback(LoggingCallback, ABC, Generic[I, O]):
             insertion = True
 
         # move to CPU and detach
-        # NOTE: calling x.cpu().detach() doesn't seem to work right.
-        # error is not reproducible in combustion
         e, p = item.item
-        e = example.detach().to("cpu", copy=True, non_blocking=True)
-        p = pred.detach().to("cpu", copy=True, non_blocking=True)
+        e = apply_to_collection(e, Tensor, cpu_detach)
+        p = apply_to_collection(p, Tensor, cpu_detach)
         item.item = (e, p)
 
         queue.put(item)

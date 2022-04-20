@@ -22,6 +22,7 @@ requirements = [
     "scikit-learn",
     "jsonargparse[signatures]",
     "pandas",
+    "lightning-flash",
 ]
 
 
