@@ -7,7 +7,10 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
+from ....core import HEAD_REGISTRY
 
+
+@HEAD_REGISTRY(name="seq-linear")
 class Classifier(nn.Module):
     r"""Simple classification head for sequential inputs. The head consists of an optional pooling layer, multiple
     neck blocks, and a final classification linear layer.
@@ -47,8 +50,8 @@ class Classifier(nn.Module):
 
     def __init__(
         self,
+        num_features: int,
         num_classes: int,
-        width: int,
         depth: int = 1,
         dropout: float = 0.0,
         pool: Optional[Callable] = torch.mean,
@@ -60,9 +63,9 @@ class Classifier(nn.Module):
             raise ValueError(f"num_classes must be >= 1, found {num_classes}")
         self.num_classes = num_classes
         self.pool = pool
-        self.neck = self.create_neck(width, depth, dropout, act)
+        self.neck = self.create_neck(num_features, depth, dropout, act)
         self.head = nn.Linear(
-            width,
+            num_features,
             self.num_classes if self.num_classes > 2 else 1,
         )
         self.reset_parameters(prior)
@@ -103,6 +106,7 @@ class Classifier(nn.Module):
         return x
 
 
+@HEAD_REGISTRY(name="conv-linear")
 class ConvClassifier(Classifier):
     r"""Simple classification head for 2D inputs. The head consists of an optional pooling layer, multiple
     neck blocks, and a final classification pointwise convolution layer.
@@ -142,18 +146,18 @@ class ConvClassifier(Classifier):
 
     def __init__(
         self,
+        num_features: int,
         num_classes: int,
-        width: int,
         depth: int = 1,
         dropout: float = 0.0,
         pool: nn.Module = nn.AdaptiveAvgPool2d((1, 1)),
         prior: Optional[Union[Tensor, float]] = None,
         act: nn.Module = nn.Mish(),
     ):
-        super().__init__(num_classes, width, depth, dropout, pool, prior, act)
+        super().__init__(num_classes, num_features, depth, dropout, pool, prior, act)
         self.pool = pool
         self.head = nn.Conv2d(
-            width,
+            num_features,
             self.num_classes if self.num_classes > 2 else 1,
             kernel_size=1,
         )
@@ -178,3 +182,23 @@ class ConvClassifier(Classifier):
             x = x.view(N, -1)
         assert x.shape[1] == self.num_classes if self.num_classes > 2 else 1
         return x
+
+
+@HEAD_REGISTRY(name="linear")
+class Head(nn.Module):
+    def __init__(
+        self,
+        num_features: int,
+        num_classes: int,
+    ):
+        super().__init__()
+        self.num_classes = num_classes
+        self.head = nn.Linear(
+            num_features,
+            num_classes if num_classes > 2 else 1,
+        )
+
+    def forward(self, x: Tensor) -> Tensor:
+        x = self.head(x)
+        assert x.shape[1] == self.num_classes if self.num_classes > 2 else 1
+        return x.squeeze(-1)

@@ -1,20 +1,15 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-from icevision.tfms import A
-
-from flash import InputTransform
-from flash.core.integrations.icevision.transforms import IceVisionTransformAdapter
-from flash.image import ObjectDetectionData
-
 
 from dataclasses import dataclass
 from typing import Callable, Tuple, Union
 
 import torch
-
+from flash import InputTransform
 from flash.core.data.io.input_transform import InputTransform
 from flash.core.data.transforms import kornia_collate
 from flash.core.utilities.imports import _ALBUMENTATIONS_AVAILABLE, _TORCHVISION_AVAILABLE, requires
+
 
 if _TORCHVISION_AVAILABLE:
     from torchvision import transforms as T

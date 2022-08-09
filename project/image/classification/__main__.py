@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-from setuptools import setup
+from .cli import image_classification
 
 
 if __name__ == "__main__":
-    setup()
+    image_classification()

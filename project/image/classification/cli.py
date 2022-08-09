@@ -1,8 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 from flash.core.data.utils import download_data
-from flash.core.utilities.flash_cli import FlashCLI
-from flash.image import ImageClassificationData, ImageClassifier
+from flash.image import ImageClassificationData
+from pytorch_lightning.cli import LightningCLI
+
+from .task import ImageClassifier
+
 
 __all__ = ["image_classification"]
 
@@ -25,18 +28,18 @@ def from_hymenoptera(
 
 def image_classification():
     """Classify images."""
-    cli = FlashCLI(
+    cli = LightningCLI(
         ImageClassifier,
-        ImageClassificationData,
-        default_datamodule_builder=from_hymenoptera,
-        #additional_datamodule_builders=[from_movie_posters],
-        default_arguments={
-            "trainer.max_epochs": 3,
-        },
-        datamodule_attributes={"num_classes", "labels", "multi_label"},
+        from_hymenoptera,
+        # default_datamodule_builder=from_hymenoptera,
+        # additional_datamodule_builders=[from_movie_posters],
+        # default_arguments={
+        #    "trainer.max_epochs": 3,
+        # },
+        # datamodule_attributes={"num_classes", "labels", "multi_label"},
     )
 
-    cli.trainer.save_checkpoint("image_classification_model.pt")
+    # cli.trainer.save_checkpoint("image_classification_model.pt")
 
 
 if __name__ == "__main__":

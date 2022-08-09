@@ -4,22 +4,19 @@
 from abc import ABC, abstractclassmethod, abstractmethod
 from functools import wraps
 from queue import PriorityQueue
-from typing import TYPE_CHECKING, Any, Dict, ForwardRef, Generic, Iterable, Iterator, Optional, Tuple, Union, TypeVar, Callable, ParamSpec
+from typing import Any, Callable, Dict, Generic, Iterable, Iterator, Optional, ParamSpec, Tuple, Union
 
 import pytorch_lightning as pl
 import torch
-from torch import Tensor
+from flash.core.data.io.input import DataKeys
+from flash.core.utilities.stages import RunningStage
 from pytorch_lightning.callbacks import Callback
 from pytorch_lightning.utilities import rank_zero_only
-from pytorch_lightning.utilities.apply_func import apply_to_collection, move_data_to_device
-from functools import wraps
-
-from flash.core.utilities.stages import RunningStage
-from flash.core.model import OutputKeys
-from flash.core.data.io.input import DataKeys
+from pytorch_lightning.utilities.apply_func import apply_to_collection
+from torch import Tensor
 
 from ..metrics import PrioritizedItem, QueueStateCollection
-from ..structs import Example, I, Mode, ModeGroup, O, Prediction, State
+from ..structs import I, Mode, O, State
 from ..types import STAGE_TYPE, InputDict, OutputDict
 
 
@@ -37,20 +34,22 @@ def provides(stage: RunningStage) -> Callable:
     def decorator(f: Callable[P, None]) -> Callable[P, None]:
         @wraps(f)
         def wrapper(
-            self: "LoggingCallback", 
+            self: "LoggingCallback",
             trainer: pl.Trainer,
             pl_module: pl.LightningModule,
             outputs: OutputDict,
             batch: InputDict,
             batch_idx: int,
-            *args, 
+            *args,
             **kwargs,
         ) -> None:
             if stage not in self.stages:
                 return
             self.register(stage, pl_module, batch, outputs)
             self._on_batch_end(stage, trainer, pl_module, outputs, batch, batch_idx, *args, **kwargs)
+
         return wrapper
+
     return decorator
 
 
