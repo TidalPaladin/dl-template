@@ -4,7 +4,7 @@ from flash.core.data.utils import download_data
 from flash.image import ImageClassificationData
 from pytorch_lightning.cli import LightningCLI
 
-from .task import ImageClassifier
+from .task import MaskedImageModeling
 
 
 __all__ = ["image_classification"]
@@ -29,7 +29,7 @@ def from_hymenoptera(
 def image_classification():
     """Classify images."""
     cli = LightningCLI(
-        ImageClassifier,
+        MaskedImageModeling,
         from_hymenoptera,
         seed_everything_default=42,
         # default_datamodule_builder=from_hymenoptera,

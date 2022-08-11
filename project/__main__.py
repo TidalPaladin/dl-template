@@ -3,14 +3,17 @@
 
 import os
 
-from flash.core.utilities.flash_cli import FlashCLI
 from jsonargparse import lazy_instance
 from pl_bolts.datamodules import CIFAR10DataModule
 from pl_bolts.datamodules.vision_datamodule import VisionDataModule
 from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.utilities.cli import LightningArgumentParser
+from pytorch_lightning.cli import LightningArgumentParser, LightningCLI
+from flash.core.data.data_module import DataModule
 
-from .model import BaseModel, ConvModel
+from .core.task import Task
+from .image.classification.task import ImageClassifier
+from .image.mim.task import MaskedImageModeling
+
 
 
 # MODEL_REGISTRY.register_classes(model, BaseModel, override=True)
@@ -21,34 +24,33 @@ OUTPUT = os.environ.get("OUTPUT_PATH", "./outputs")
 OUTPUT += f"/{PROJECT}"
 
 
-class CLI(FlashCLI):
-    def add_arguments_to_parser(self, parser: LightningArgumentParser):
-        super().add_arguments_to_parser(parser)
-        # parser.add_optimizer_args(OPTIMIZER_REGISTRY.classes, link_to="model.init_args.optimizer_init")
-        # parser.add_lr_scheduler_args(LR_SCHEDULER_REGISTRY.classes, link_to="model.init_args.lr_scheduler_init")
-        # parser.add_argument("--lr_scheduler_monitor", default="train/total_loss_epoch")
-        # parser.add_argument("--lr_scheduler_interval", default="epoch")
-
-        # parser.link_arguments("lr_scheduler_monitor", "model.init_args.lr_scheduler_monitor")
-        # parser.link_arguments("lr_scheduler_interval", "model.init_args.lr_scheduler_interval")
-
-        parser.set_defaults()
+#class CLI(FlashCLI):
+#    def add_arguments_to_parser(self, parser: LightningArgumentParser):
+#        super().add_arguments_to_parser(parser)
+#        # parser.add_optimizer_args(OPTIMIZER_REGISTRY.classes, link_to="model.init_args.optimizer_init")
+#        # parser.add_lr_scheduler_args(LR_SCHEDULER_REGISTRY.classes, link_to="model.init_args.lr_scheduler_init")
+#        # parser.add_argument("--lr_scheduler_monitor", default="train/total_loss_epoch")
+#        # parser.add_argument("--lr_scheduler_interval", default="epoch")
+#
+#        # parser.link_arguments("lr_scheduler_monitor", "model.init_args.lr_scheduler_monitor")
+#        # parser.link_arguments("lr_scheduler_interval", "model.init_args.lr_scheduler_interval")
+#
+#        parser.set_defaults()
 
 
 def main():
-    print(f"Writing to {OUTPUT}")
 
-    defaults = {
-        "trainer.logger": lazy_instance(WandbLogger, project=PROJECT, log_model=True, save_dir=OUTPUT),
-        "trainer.default_root_dir": "./outputs",
-        "model": lazy_instance(ConvModel),
-        "data": lazy_instance(CIFAR10DataModule, data_dir="./data", num_workers=8, batch_size=32),
-        "optimizer": "torch.optim.AdamW",
-    }
+    #defaults = {
+    #    "trainer.logger": lazy_instance(WandbLogger, project=PROJECT, log_model=True, save_dir=OUTPUT),
+    #    "trainer.default_root_dir": "./outputs",
+    #    "model": lazy_instance(ConvModel),
+    #    "data": lazy_instance(CIFAR10DataModule, data_dir="./data", num_workers=8, batch_size=32),
+    #    "optimizer": "torch.optim.AdamW",
+    #}
 
-    cli = CLI(
-        BaseModel,
-        VisionDataModule,
+    cli = LightningCLI(
+        Task,
+        DataModule,
         seed_everything_default=42,
         subclass_mode_model=True,
         subclass_mode_data=True,

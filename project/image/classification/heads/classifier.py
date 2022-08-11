@@ -98,6 +98,7 @@ class Classifier(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         L, N, D = x.shape
+        import pdb; pdb.set_trace()
         if self.pool is not None:
             x = self.pool(x, dim=0)
         x = self.neck(x)
@@ -200,5 +201,7 @@ class Head(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         x = self.head(x)
+        if x.ndim == 3:
+            x = x.mean(-2)
         assert x.shape[1] == self.num_classes if self.num_classes > 2 else 1
         return x.squeeze(-1)

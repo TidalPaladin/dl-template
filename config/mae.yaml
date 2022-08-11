@@ -1,0 +1,37 @@
+trainer:
+  accelerator: gpu
+  devices: [0]
+  precision: 16
+  max_steps: 40000
+  check_val_every_n_epoch: 10
+
+optimizer:
+  class_path: torch.optim.AdamW
+  init_args: 
+    lr: 0.001
+    weight_decay: 0.0001
+
+model:
+  backbone: vit_base_patch8_224
+  patch_size: 7
+  backbone_kwargs:
+    img_size: 196
+    class_token: false
+  pretrained: false
+    #num_classes: 2
+
+data:
+  batch_size: 8
+  num_workers: 10
+  persistent_workers: true
+
+    #lr_scheduler_interval: 'step'
+    #lr_scheduler:
+    #  class_path: torch.optim.lr_scheduler.OneCycleLR
+    #  init_args: 
+    #    max_lr: 0.001
+    #    # TODO find a way to link to trainer.max_steps
+    #    total_steps: 40000
+    #    pct_start: 0.3
+    #    div_factor: 4
+    #    final_div_factor: 20
